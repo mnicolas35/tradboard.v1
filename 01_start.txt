@@ -1,0 +1,251 @@
+01_start.txt
+Date de creation : 2026-05-01 20:58:20 CEST +0200
+Projet : tradboard.v1
+Chemin projet : /home/mnicolas35/tradboard.v1
+Depot GitHub : git@github.com:mnicolas35/tradboard.v1.git
+
+Objectif de cette session
+-------------------------
+Verifier le clone GitHub du projet, comprendre pourquoi le repertoire projet
+etait vide, nettoyer le repertoire personnel /home/mnicolas35 pour qu'il ne
+soit plus un depot Git, puis preparer le depot projet pour les futurs commits.
+
+Etat initial constate
+---------------------
+Le repertoire /home/mnicolas35/tradboard.v1 existait et contenait uniquement
+le dossier Git :
+
+  /home/mnicolas35/tradboard.v1/.git
+
+Commande de verification :
+
+  ls -la /home/mnicolas35/tradboard.v1
+
+Resultat observe :
+
+  total 12
+  drwxrwxr-x  3 mnicolas35 mnicolas35 4096 May  1 20:47 .
+  drwx------ 10 mnicolas35 mnicolas35 4096 May  1 20:48 ..
+  drwxrwxr-x  7 mnicolas35 mnicolas35 4096 May  1 20:47 .git
+
+Etat Git du depot projet
+------------------------
+Commande :
+
+  git status --short --branch
+
+Resultat observe dans /home/mnicolas35/tradboard.v1 :
+
+  ## No commits yet on main...origin/main [gone]
+
+Interpretation :
+
+  - Le depot local existe.
+  - Il n'y a encore aucun commit local.
+  - La branche main locale existe comme branche initiale.
+  - La branche distante origin/main n'existe pas encore cote GitHub.
+  - Le depot GitHub est accessible mais ne contient aucune branche distante.
+
+Remote Git configure
+--------------------
+Commande :
+
+  git remote -v
+
+Resultat :
+
+  origin  git@github.com:mnicolas35/tradboard.v1.git (fetch)
+  origin  git@github.com:mnicolas35/tradboard.v1.git (push)
+
+Verification des branches distantes
+-----------------------------------
+Commande utilisee avec la configuration SSH utilisateur :
+
+  GIT_SSH_COMMAND='ssh -F /home/mnicolas35/.ssh/config' git ls-remote --heads origin
+
+Resultat :
+
+  Aucun retour.
+
+Interpretation :
+
+  Le depot GitHub existe et est accessible, mais il ne contient encore aucune
+  branche publiee. Le premier push creera la branche main distante.
+
+Probleme SSH systeme identifie
+------------------------------
+Commande :
+
+  ssh -T git@github.com
+
+Erreur initiale :
+
+  Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+
+Cause constatee :
+
+  Le fichier de configuration SSH systeme
+  /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf pointe vers :
+
+  /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf
+
+  Ce fichier appartient a nobody:nogroup au lieu de root:root, ce qu'OpenSSH
+  refuse pour une configuration systeme.
+
+Commandes de diagnostic utilisees :
+
+  ls -ld /etc/ssh /etc/ssh/ssh_config.d
+  ls -l /etc/ssh/ssh_config.d
+  ls -ld /usr/lib/systemd /usr/lib/systemd/ssh_config.d
+  ls -l /usr/lib/systemd/ssh_config.d
+  stat /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf
+
+Contournement SSH utilise pour Git
+----------------------------------
+La configuration SSH utilisateur suivante existe :
+
+  /home/mnicolas35/.ssh/config
+
+Contenu constate :
+
+  Host github.com
+      HostName github.com
+      User git
+      IdentityFile ~/.ssh/tradboard.full.codex_mnicolas35_id_ed25519
+      IdentitiesOnly yes
+
+Cle publique presente :
+
+  /home/mnicolas35/.ssh/tradboard.full.codex_mnicolas35_id_ed25519.pub
+
+Cle publique :
+
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILkx8kOqhu9ly0Net3fU5tPDEYOvR0YA33RjDE65EzfT mnicolas35@tradboard.full.codex
+
+Verification SSH reussie avec cette configuration :
+
+  ssh -F /home/mnicolas35/.ssh/config -T git@github.com
+
+Resultat :
+
+  Hi mnicolas35! You've successfully authenticated, but GitHub does not provide shell access.
+
+Parametrage Git ajoute dans le depot projet
+-------------------------------------------
+Commande executee dans /home/mnicolas35/tradboard.v1 :
+
+  git config core.sshCommand 'ssh -F /home/mnicolas35/.ssh/config'
+
+Effet :
+
+  Le depot projet utilise explicitement la configuration SSH utilisateur pour
+  contacter GitHub. Cela evite le blocage provoque par la configuration SSH
+  systeme incorrecte.
+
+Fichier Git modifie par cette commande :
+
+  /home/mnicolas35/tradboard.v1/.git/config
+
+Nettoyage du depot Git accidentel dans /home/mnicolas35
+------------------------------------------------------
+Constat initial :
+
+  /home/mnicolas35 etait aussi reconnu comme un depot Git.
+
+Commandes de verification :
+
+  git rev-parse --is-inside-work-tree
+  ls -ld .git tradboard.v1/.git
+
+Resultat observe :
+
+  /home/mnicolas35/.git existait.
+  /home/mnicolas35/tradboard.v1/.git existait aussi.
+
+Action demandee :
+
+  Supprimer le fait que /home/mnicolas35 soit un depot Git, sans toucher au
+  depot projet /home/mnicolas35/tradboard.v1.
+
+Commande executee :
+
+  rm -rf /home/mnicolas35/.git
+
+Une tentative initiale sans privileges eleves a echoue avec :
+
+  Read-only file system
+
+La suppression a ensuite ete autorisee et executee avec privileges eleves.
+
+Verification apres suppression :
+
+  git rev-parse --is-inside-work-tree
+
+Resultat dans /home/mnicolas35 :
+
+  fatal: not a git repository (or any of the parent directories): .git
+
+Resultat dans /home/mnicolas35/tradboard.v1 :
+
+  true
+
+Conclusion :
+
+  /home/mnicolas35 n'est plus un depot Git.
+  /home/mnicolas35/tradboard.v1 reste bien le depot Git du projet.
+
+Note sur le dossier /home/mnicolas35/.git
+-----------------------------------------
+Apres suppression, un dossier vide /home/mnicolas35/.git est reapparu en
+lecture seule dans l'environnement.
+
+Commandes de verification :
+
+  ls -la /home/mnicolas35/.git
+  find /home/mnicolas35/.git -maxdepth 2 -print
+  stat /home/mnicolas35/.git
+
+Resultat :
+
+  Le dossier est vide.
+  Il ne contient plus les fichiers Git necessaires comme HEAD, config, objects.
+  Git ne reconnait donc plus /home/mnicolas35 comme un depot.
+
+Correction systeme SSH recommandee plus tard
+--------------------------------------------
+Ces commandes n'ont pas ete executees pendant cette session, mais elles ont ete
+proposees pour corriger proprement les permissions SSH systeme :
+
+  sudo chown root:root /etc/ssh /etc/ssh/ssh_config.d
+  sudo chown -h root:root /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+  sudo chown root:root /usr/lib/systemd/ssh_config.d /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf
+  sudo chmod 755 /etc/ssh /etc/ssh/ssh_config.d /usr/lib/systemd/ssh_config.d
+  sudo chmod 644 /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf
+
+Etat actuel attendu
+-------------------
+Le projet de travail est :
+
+  /home/mnicolas35/tradboard.v1
+
+Le depot Git distant est :
+
+  git@github.com:mnicolas35/tradboard.v1.git
+
+Le depot local est pret pour un premier commit.
+Le premier push creera la branche main sur GitHub.
+
+Prochaine etape prevue
+----------------------
+1. Relire ce fichier depuis une autre console.
+2. Confirmer que le contenu est correct.
+3. Apres confirmation, ajouter ce fichier a Git, creer le premier commit, puis
+   pousser la branche main vers GitHub.
+
+Commandes Git prevues apres validation utilisateur
+--------------------------------------------------
+Ces commandes ne sont pas encore executees :
+
+  git add 01_start.txt
+  git commit -m "Add initial setup log"
+  git push -u origin main
