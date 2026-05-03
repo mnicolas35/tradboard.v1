@@ -10,6 +10,7 @@ import { PayoutForm } from "@/components/forms/PayoutForm";
 import { TradingDayForm } from "@/components/forms/TradingDayForm";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { AddAccountModal } from "@/components/modals/AddAccountModal";
 import { UserSettings } from "@/components/settings/UserSettings";
 import { PropFirmManager } from "@/components/propfirms/PropFirmManager";
 import type { AppData, AppView } from "@/types";
@@ -50,6 +51,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 export function TradBoardApp({ data }: TradBoardAppProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [view, setView] = useState<AppView>("dashboard");
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
 
   const selectedAccount = useMemo(() => {
     if (!view.startsWith("account:")) {
@@ -70,14 +72,13 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
   } else if (view === "archived-accounts") {
     content = <ArchivedAccounts accounts={data.archivedAccounts} onOpenAccount={setView} />;
   } else if (view === "prop-firms") {
-    content = (
-      <PropFirmManager
-        accounts={data.accounts}
-        propFirms={data.propFirmDetails}
-        propFirmRules={data.propFirmRules}
-        isAdmin={data.currentUser.role === "ADMIN"}
-        currentUserId={data.currentUser.id}
-      />
+      content = (
+        <PropFirmManager
+          propFirms={data.propFirmDetails}
+          propFirmRules={data.propFirmRules}
+          isAdmin={data.currentUser.role === "ADMIN"}
+          currentUserId={data.currentUser.id}
+        />
     );
   } else if (view === "settings") {
     content = <UserSettings user={data.currentUser} />;
@@ -108,9 +109,17 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
           propFirmOrders={data.propFirmOrders}
           currentView={view}
           onChangeView={setView}
+          onOpenAccount={() => setAccountModalOpen(true)}
         />
         <section className="workspace">{content}</section>
       </div>
+      <AddAccountModal
+        isOpen={accountModalOpen}
+        title="Ajouter un compte"
+        propFirms={data.propFirms}
+        propFirmRules={data.propFirmRules}
+        onClose={() => setAccountModalOpen(false)}
+      />
     </main>
   );
 }

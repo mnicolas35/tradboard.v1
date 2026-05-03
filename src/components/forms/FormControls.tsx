@@ -93,6 +93,12 @@ export const accountTypeOptions = [
   { id: "FUNDED", label: "FUNDED" }
 ];
 
+export const accountCreationTypeOptions = [
+  { id: "EVALUATION", label: "EVALUATION" },
+  { id: "FUNDED", label: "FUNDED" },
+  { id: "DEMO", label: "DEMO" }
+];
+
 export const platformOptions = [
   { id: "RITHMIC", label: "Rithmic" },
   { id: "TRADOVATE", label: "Tradovate" },

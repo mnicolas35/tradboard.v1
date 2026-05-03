@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { AccountSummary, AppView } from "@/types";
 
 type SidebarProps = {
@@ -7,6 +8,7 @@ type SidebarProps = {
   propFirmOrders: Record<string, number>;
   currentView: AppView;
   onChangeView: (view: AppView) => void;
+  onOpenAccount: () => void;
 };
 
 function accountBadge(account: AccountSummary) {
@@ -33,7 +35,8 @@ function compactSize(value: number) {
   return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
 }
 
-export function Sidebar({ accounts, propFirmOrders, currentView, onChangeView }: SidebarProps) {
+export function Sidebar({ accounts, propFirmOrders, currentView, onChangeView, onOpenAccount }: SidebarProps) {
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const groups = Object.entries(
     accounts.reduce<Record<string, { acronym: string; accounts: AccountSummary[]; order: number }>>((acc, account) => {
       acc[account.propFirmId] ??= {
@@ -48,6 +51,18 @@ export function Sidebar({ accounts, propFirmOrders, currentView, onChangeView }:
     .map(([propFirmId, group]) => ({ propFirmId, ...group }))
     .sort((a, b) => a.order - b.order || a.acronym.localeCompare(b.acronym));
 
+  function toggleGroup(propFirmId: string) {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(propFirmId)) {
+        next.delete(propFirmId);
+      } else {
+        next.add(propFirmId);
+      }
+      return next;
+    });
+  }
+
   return (
     <aside className="sidebar">
       <button
@@ -59,32 +74,53 @@ export function Sidebar({ accounts, propFirmOrders, currentView, onChangeView }:
       </button>
 
       <section className="sidebar-section accounts-section">
-        <div className="sidebar-heading">Comptes</div>
+        <div className="sidebar-heading sidebar-heading-row">
+          <span>Comptes</span>
+          <button
+            aria-label="Add compte utilisateur"
+            className="sidebar-plus-button"
+            title="Add compte utilisateur"
+            type="button"
+            onClick={onOpenAccount}
+          >
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
         <div className="sidebar-list accounts-list">
           {groups.length === 0 ? (
             <p className="sidebar-empty">Aucun compte actif.</p>
           ) : (
             groups.map((group) => (
               <div className="sidebar-account-group" key={group.propFirmId}>
-                <div className="sidebar-account-group-title">{group.acronym}</div>
-                {group.accounts.map((account) => {
-                  const view = `account:${account.id}` as AppView;
-              return (
                 <button
-                  className={currentView === view ? "sidebar-item account-nav-item active" : "sidebar-item account-nav-item"}
-                  key={account.id}
+                  aria-expanded={!collapsedGroups.has(group.propFirmId)}
+                  className="sidebar-account-group-title"
                   type="button"
-                  onClick={() => onChangeView(view)}
+                  onClick={() => toggleGroup(group.propFirmId)}
                 >
-                  <span>
-                    {compactSize(account.accountSize)} {account.accountNumber ? `#${account.accountNumber}` : account.name}
-                  </span>
-                  <small>
-                    {account.currentResultUsd >= 0 ? "+" : ""}${account.currentResultUsd.toFixed(0)} {accountBadge(account)}
-                  </small>
+                  <span>{group.acronym}</span>
+                  <span aria-hidden="true">{collapsedGroups.has(group.propFirmId) ? "+" : "-"}</span>
                 </button>
-              );
-                })}
+                {collapsedGroups.has(group.propFirmId)
+                  ? null
+                  : group.accounts.map((account) => {
+                      const view = `account:${account.id}` as AppView;
+                      return (
+                        <button
+                          className={currentView === view ? "sidebar-item account-nav-item active" : "sidebar-item account-nav-item"}
+                          key={account.id}
+                          type="button"
+                          onClick={() => onChangeView(view)}
+                        >
+                          <span>
+                            {compactSize(account.accountSize)} {account.accountNumber ? `#${account.accountNumber}` : account.name}
+                          </span>
+                          <small>
+                            {account.currentResultUsd >= 0 ? "+" : ""}${account.currentResultUsd.toFixed(0)} {accountBadge(account)}
+                          </small>
+                        </button>
+                      );
+                    })}
               </div>
             ))
           )}

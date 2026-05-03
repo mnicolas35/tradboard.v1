@@ -61,6 +61,7 @@ export type AppData = {
       dailyDrawdown: number | null;
       buffer: number | null;
       consistencyPercent: number | null;
+      fundedConsistencyPercent: number | null;
       minTradingDays: number | null;
       minTradingDaysForPayout: number | null;
       minPayoutTradingDays: number | null;
@@ -71,6 +72,7 @@ export type AppData = {
       defaultPurchasePrice: number | null;
       defaultActivationPrice: number | null;
       defaultResetPrice: number | null;
+      defaultFundedResetPrice: number | null;
       promoNote: string | null;
       notes: string | null;
       isStandard: boolean;

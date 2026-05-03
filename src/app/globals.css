@@ -204,6 +204,13 @@ h2 {
   text-transform: uppercase;
 }
 
+.sidebar-heading-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .sidebar-list {
   display: grid;
   gap: 6px;
@@ -228,6 +235,42 @@ h2 {
 .sidebar-dashboard {
   font-weight: 800;
   min-height: 42px;
+}
+
+.sidebar-action-item {
+  border-color: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.sidebar-action-item:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 38%, transparent);
+}
+
+.sidebar-plus-button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 5px;
+}
+
+.sidebar-plus-button:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.sidebar-plus-button span {
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .account-nav-item {
@@ -615,6 +658,11 @@ tr:last-child td {
   color: var(--accent);
 }
 
+.row-icon-button.add:hover {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+
 .row-icon-button.danger:hover {
   border-color: var(--negative);
   color: var(--negative);
@@ -831,30 +879,120 @@ tr:last-child td {
 .propfirm-rules {
   background: var(--surface-muted);
   display: grid;
-  gap: 5px;
-  padding: 6px 12px 9px 30px;
+  gap: 10px;
+  padding: 10px 12px 12px 30px;
 }
 
-.propfirm-rule-row {
+.propfirm-rule-group {
+  display: grid;
+  gap: 6px;
+}
+
+.propfirm-rule-group-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.propfirm-rule-group-list {
+  display: grid;
+  gap: 6px;
+}
+
+.propfirm-rule-group-list.compact {
+  gap: 4px;
+}
+
+.propfirm-rule-name-row {
   align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 7px 10px;
+}
+
+.propfirm-rule-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.rule-row-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.propfirm-rule-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  padding: 6px 8px;
+  padding: 8px 10px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.propfirm-rule-row strong {
+.propfirm-rule-card:hover {
+  background: color-mix(in srgb, var(--surface-muted) 48%, transparent);
+}
+
+.propfirm-rule-top {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.propfirm-rule-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.propfirm-rule-title strong {
   font-size: 0.86rem;
   line-height: 1.2;
 }
 
-.propfirm-rule-row span {
+.propfirm-rule-title span,
+.propfirm-rule-metrics span {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.propfirm-rule-sections {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.propfirm-rule-section {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.propfirm-rule-section-title {
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.propfirm-rule-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 
 .rule-action-row,
@@ -879,17 +1017,41 @@ tr:last-child td {
   gap: 16px;
 }
 
+.rule-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.rule-section-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .sidebar-account-group {
   display: grid;
   gap: 4px;
 }
 
 .sidebar-account-group-title {
+  align-items: center;
+  background: transparent;
+  border: 0;
   color: var(--muted);
+  cursor: pointer;
+  display: flex;
   font-size: 0.7rem;
   font-weight: 900;
+  justify-content: space-between;
   padding: 8px 9px 2px;
+  text-align: left;
   text-transform: uppercase;
+}
+
+.sidebar-account-group-title:hover {
+  color: var(--text);
 }
 
 .form-panel {
@@ -1117,6 +1279,11 @@ textarea {
 
   .propfirm-row,
   .propfirm-rule-row {
+    grid-template-columns: 1fr;
+  }
+
+  .propfirm-rule-top,
+  .propfirm-rule-sections {
     grid-template-columns: 1fr;
   }
 

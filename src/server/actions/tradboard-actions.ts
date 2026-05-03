@@ -87,6 +87,26 @@ function platform(formData: FormData): AccountPlatform | null {
   return values.includes(value) ? (value as AccountPlatform) : null;
 }
 
+function accountType(formData: FormData): AccountType {
+  const value = requiredText(formData, "accountType");
+  if (value !== "EVALUATION" && value !== "FUNDED") {
+    throw new Error("Type de compte invalide.");
+  }
+
+  return value as AccountType;
+}
+
+function accountStatus(formData: FormData): AccountStatus {
+  const value = requiredText(formData, "status");
+  const values: AccountStatus[] = ["ACTIVE", "PASSED", "FAILED", "CLOSED", "ARCHIVED"];
+
+  if (!values.includes(value as AccountStatus)) {
+    throw new Error("Statut invalide.");
+  }
+
+  return value as AccountStatus;
+}
+
 function refresh() {
   revalidatePath("/");
 }
@@ -142,20 +162,33 @@ export async function createPropFirmRule(formData: FormData) {
   const currentUser = await getCurrentUser();
   const requestedStandard = formData.get("isStandard") === "on";
   const isStandard = currentUser.role === "ADMIN" ? requestedStandard : false;
+  const propFirmId = requiredText(formData, "propFirmId");
+  const accountSize = requiredDecimal(formData, "accountSize");
+  const propFirm = await prisma.propFirm.findUnique({
+    where: { id: propFirmId },
+    select: { acronym: true, name: true }
+  });
+
+  if (!propFirm) {
+    throw new Error("PropFirm introuvable.");
+  }
+
+  const ruleName = optionalText(formData, "name") || `${propFirm.acronym} ${Math.round(Number(accountSize) / 1000)}k`;
 
   await prisma.propFirmRule.create({
     data: {
-      propFirmId: requiredText(formData, "propFirmId"),
+      propFirmId,
       createdByUserId: isStandard ? null : currentUser.id,
-      name: requiredText(formData, "name"),
+      name: ruleName,
       accountType: requiredText(formData, "accountType") as AccountType,
-      accountSize: requiredDecimal(formData, "accountSize"),
+      accountSize,
       target: requiredDecimal(formData, "target"),
       maxDrawdown: requiredDecimal(formData, "maxDrawdown"),
       dailyDrawdown: optionalDecimal(formData, "dailyDrawdown"),
       buffer: optionalDecimal(formData, "buffer"),
       payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
+      fundedConsistencyPercent: optionalDecimal(formData, "fundedConsistencyPercent"),
       minTradingDays: optionalInt(formData, "minTradingDays"),
       minTradingDaysForPayout: optionalInt(formData, "minTradingDaysForPayout"),
       minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays") ?? optionalInt(formData, "minTradingDaysForPayout"),
@@ -166,6 +199,7 @@ export async function createPropFirmRule(formData: FormData) {
       activationPrice: optionalDecimal(formData, "activationPrice"),
       defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
       defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),
+      defaultFundedResetPrice: optionalDecimal(formData, "defaultFundedResetPrice"),
       promo: optionalText(formData, "promo"),
       promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
       notes: optionalText(formData, "notes"),
@@ -220,6 +254,7 @@ export async function updatePropFirmRule(formData: FormData) {
       buffer: optionalDecimal(formData, "buffer"),
       payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
+      fundedConsistencyPercent: optionalDecimal(formData, "fundedConsistencyPercent"),
       minTradingDays: optionalInt(formData, "minTradingDays"),
       minTradingDaysForPayout: optionalInt(formData, "minTradingDaysForPayout"),
       minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays") ?? optionalInt(formData, "minTradingDaysForPayout"),
@@ -230,6 +265,7 @@ export async function updatePropFirmRule(formData: FormData) {
       activationPrice: optionalDecimal(formData, "activationPrice"),
       defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
       defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),
+      defaultFundedResetPrice: optionalDecimal(formData, "defaultFundedResetPrice"),
       promo: optionalText(formData, "promo"),
       promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
       notes: optionalText(formData, "notes"),
@@ -250,24 +286,52 @@ export async function deletePropFirmRule(formData: FormData) {
 
 export async function createAccount(formData: FormData) {
   const currentUser = await getCurrentUser();
+  const propFirmId = requiredText(formData, "propFirmId");
+  const propFirmRuleId = requiredText(formData, "propFirmRuleId");
+  const selectedAccountType = accountType(formData);
+  const promoPercentValue = optionalDecimal(formData, "promoPercent");
+  const promoPercent = promoPercentValue === null ? 0 : Number(promoPercentValue);
+
+  if (Number.isNaN(promoPercent) || promoPercent < 0 || promoPercent > 100) {
+    throw new Error("Promo invalide.");
+  }
+
+  const rule = await prisma.propFirmRule.findFirst({
+    where: {
+      id: propFirmRuleId,
+      propFirmId,
+      isActive: true,
+      OR: currentUser.role === "ADMIN" ? undefined : [{ isStandard: true }, { createdByUserId: currentUser.id }]
+    },
+    include: { propFirm: true }
+  });
+
+  if (!rule) {
+    throw new Error("Règle PropFirm introuvable.");
+  }
+
+  const defaultPurchasePrice = rule.defaultPurchasePrice === null ? null : Number(rule.defaultPurchasePrice);
+  const purchasePrice =
+    defaultPurchasePrice === null ? null : (defaultPurchasePrice * (100 - promoPercent)) / 100;
+  const promoUsed = promoPercent > 0 ? `${promoPercent}%` : null;
 
   await prisma.account.create({
     data: {
       userId: currentUser.id,
-      propFirmId: requiredText(formData, "propFirmId"),
-      propFirmRuleId: optionalText(formData, "propFirmRuleId"),
-      parentAccountId: optionalText(formData, "parentAccountId"),
-      accountType: requiredText(formData, "accountType") as AccountType,
-      accountSize: requiredDecimal(formData, "accountSize"),
-      name: requiredText(formData, "name"),
-      accountNumber: optionalText(formData, "accountNumber"),
-      platform: platform(formData),
-      currency: currency(formData, "currency"),
+      propFirmId,
+      propFirmRuleId,
+      parentAccountId: null,
+      accountType: selectedAccountType,
+      accountSize: rule.accountSize,
+      name: `${rule.propFirm.acronym} ${rule.name}`,
+      accountNumber: null,
+      platform: null,
+      currency: "USD",
       purchaseDate: optionalDate(formData, "purchaseDate"),
-      purchasePrice: optionalDecimal(formData, "purchasePrice"),
-      promoUsed: optionalText(formData, "promoUsed"),
+      purchasePrice,
+      promoUsed,
       activationDate: optionalDate(formData, "activationDate"),
-      status: (text(formData, "status") || "ACTIVE") as AccountStatus,
+      status: accountStatus(formData),
       notes: optionalText(formData, "notes")
     }
   });
@@ -546,8 +610,34 @@ export async function updatePropFirm(formData: FormData) {
 }
 
 export async function deletePropFirm(formData: FormData) {
-  await assertAdmin();
   const id = requiredText(formData, "id");
+  await assertAdmin();
+
+  const firm = await prisma.propFirm.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      _count: {
+        select: {
+          accounts: true,
+          rules: true
+        }
+      }
+    }
+  });
+
+  if (!firm) {
+    throw new Error("PropFirm introuvable.");
+  }
+
+  if (firm._count.accounts > 0) {
+    throw new Error(`Suppression impossible : ${firm._count.accounts} compte(s) utilisateur sont encore liés à ${firm.name}.`);
+  }
+
+  if (firm._count.rules > 0) {
+    throw new Error(`Suppression impossible : ${firm._count.rules} règle(s) sont encore liées à ${firm.name}.`);
+  }
 
   await prisma.propFirm.delete({ where: { id } });
   refresh();

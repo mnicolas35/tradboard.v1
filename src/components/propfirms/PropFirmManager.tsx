@@ -2,30 +2,29 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AddAccountModal } from "@/components/modals/AddAccountModal";
 import { AddPropFirmModal } from "@/components/modals/AddPropFirmModal";
 import { AddPropFirmRuleModal } from "@/components/modals/AddPropFirmRuleModal";
 import { Modal } from "@/components/ui/Modal";
 import { deletePropFirm, deletePropFirmRule, updatePropFirm } from "@/server/actions/tradboard-actions";
-import type { AccountSummary, AppData } from "@/types";
+import type { AppData } from "@/types";
 
 type PropFirmManagerProps = {
   propFirms: AppData["propFirmDetails"];
-  accounts: AccountSummary[];
   propFirmRules: AppData["propFirmRules"];
   isAdmin: boolean;
   currentUserId: string;
 };
 
-export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, currentUserId }: PropFirmManagerProps) {
+export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUserId }: PropFirmManagerProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [modal, setModal] = useState<"firm" | "account" | "rules" | null>(null);
+  const [modal, setModal] = useState<"firm" | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
   const [isDeletingRule, setIsDeletingRule] = useState(false);
   const [savingFirmId, setSavingFirmId] = useState<string | null>(null);
   const [savedFirmId, setSavedFirmId] = useState<string | null>(null);
+  const [quickRuleFirm, setQuickRuleFirm] = useState<{ id: string; label: string } | null>(null);
 
   const rulesById = new Map(propFirmRules.map((rule) => [rule.id, rule]));
   const editingRule = editingRuleId ? rulesById.get(editingRuleId) ?? null : null;
@@ -50,31 +49,14 @@ export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, c
             >
               ➕
             </button>
-            <button
-              aria-label="Ajouter un compte"
-              className="icon-button"
-              title="Ajouter un compte"
-              type="button"
-              onClick={() => setModal("account")}
-            >
-              <span aria-hidden="true">➕</span>
-              <span className="icon-button-mark">C</span>
-            </button>
-            <button
-              aria-label="Gérer les règles"
-              className="icon-button"
-              title="Gérer les règles"
-              type="button"
-              onClick={() => setModal("rules")}
-            >
-              ⚙️
-            </button>
           </div>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
         <div className="propfirm-tree">
           {propFirms.map((firm) => {
-            const firmAccountsCount = accounts.filter((account) => account.propFirmId === firm.id).length;
+            const firmRules = propFirmRules
+              .filter((rule) => rule.propFirmId === firm.id)
+              .sort((a, b) => (a.isStandard === b.isStandard ? 0 : a.isStandard ? -1 : 1) || a.name.localeCompare(b.name));
 
             return (
               <section className="propfirm-node" key={firm.id}>
@@ -133,10 +115,10 @@ export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, c
                         input?.focus();
                         input?.select();
                       }}
-                    >
-                      ⚙️
-                    </button>
-                    {isAdmin && firmAccountsCount === 0 ? (
+                      >
+                        ⚙️
+                      </button>
+                    {isAdmin ? (
                       <button
                         aria-label="Supprimer"
                         className="row-icon-button danger"
@@ -161,27 +143,31 @@ export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, c
                         🗑️
                       </button>
                     ) : null}
+                    <button
+                      aria-label="Ajouter une règle"
+                      className="row-icon-button add"
+                      title="Ajouter une règle"
+                      type="button"
+                      onClick={() => setQuickRuleFirm({ id: firm.id, label: `${firm.acronym} - ${firm.name}` })}
+                    >
+                      +
+                    </button>
                   </div>
                 </form>
 
                 <div className="propfirm-rules">
-                  {firm.rules.length === 0 ? (
+                  {firmRules.length === 0 ? (
                     <p className="muted">Aucune règle active.</p>
                   ) : (
-                    firm.rules.map((rule) => {
-                      const canManage = canManageRule(rule);
-
-                      return (
-                        <div className="propfirm-rule-row" key={rule.id}>
-                          <strong>{rule.isStandard ? "Règle standard" : "** Règle custom"} {rule.name}</strong>
-                          <span>
-                            {rule.accountType} - {Math.round(rule.accountSize / 1000)}k
+                    <div className="propfirm-rule-group-list compact">
+                      {firmRules.map((rule) => (
+                        <div className="propfirm-rule-name-row" key={rule.id}>
+                          <span className="propfirm-rule-name">
+                            {rule.isStandard ? "Règle standard" : "** Règle custom"} {rule.name}
                           </span>
-                          <span className={rule.isActive ? "status status-active" : "status"}>
-                            {rule.isActive ? "ACTIVE" : "INACTIVE"}
-                          </span>
-                          <div className="rule-action-row">
-                            {canManage ? (
+                          <div className="rule-row-actions">
+                            <div className={rule.isActive ? "status status-active" : "status"}>{rule.isActive ? "ACTIVE" : "INACTIVE"}</div>
+                            {canManageRule(rule) ? (
                               <>
                                 <button
                                   aria-label="Modifier la règle"
@@ -207,8 +193,8 @@ export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, c
                             )}
                           </div>
                         </div>
-                      );
-                    })
+                      ))}
+                    </div>
                   )}
                 </div>
               </section>
@@ -218,22 +204,18 @@ export function PropFirmManager({ propFirms, accounts, propFirmRules, isAdmin, c
       </section>
 
       <AddPropFirmModal isOpen={modal === "firm"} onClose={() => setModal(null)} />
-      <AddAccountModal
-        isOpen={modal === "account"}
-        accounts={accounts}
-        propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
-        propFirmRules={propFirmRules}
-        onClose={() => setModal(null)}
-      />
       <AddPropFirmRuleModal
-        isOpen={modal === "rules"}
+        isOpen={Boolean(quickRuleFirm)}
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
-        onClose={() => setModal(null)}
+        propFirm={quickRuleFirm}
+        allowStandardToggle={isAdmin}
+        onClose={() => setQuickRuleFirm(null)}
       />
       <AddPropFirmRuleModal
         isOpen={Boolean(editingRule)}
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={editingRule}
+        allowStandardToggle={isAdmin}
         onClose={() => setEditingRuleId(null)}
       />
       <Modal isOpen={Boolean(deletingRule)} title="Supprimer cette règle ?" onClose={() => setDeletingRuleId(null)}>

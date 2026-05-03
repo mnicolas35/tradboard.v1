@@ -36,7 +36,7 @@ export function calculatePayoutEligibility(
   const minDaysOk = validDays >= minTradingDays;
   const bestDay = Math.max(0, ...days.map((day) => day.profitLossUsd));
   const consistencyPercent =
-    rule?.consistencyPercent ?? (isApexRule ? 50 : null);
+    rule?.fundedConsistencyPercent ?? rule?.consistencyPercent ?? (isApexRule ? 50 : null);
   const consistencyLimit =
     consistencyPercent && !isTakeProfitTraderRule ? currentResultUsd * (consistencyPercent / 100) : null;
   const consistencyOk = consistencyLimit === null || bestDay <= consistencyLimit;

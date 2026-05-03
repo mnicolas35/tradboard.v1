@@ -31,7 +31,7 @@ function dateString(value: Date) {
 
 export async function getDashboardData(): Promise<AppData> {
   const currentUser = await getCurrentUser();
-  const ownedWhere = currentUser.role === "ADMIN" ? {} : { userId: currentUser.id };
+  const ownedWhere = { userId: currentUser.id };
 
   const [accounts, tradingDays, expenses, payouts, propFirms, propFirmRules, exchangeRates, propFirmOrders] =
     await Promise.all([
@@ -256,6 +256,7 @@ export async function getDashboardData(): Promise<AppData> {
       dailyDrawdown: numberOrNull(rule.dailyDrawdown),
       buffer: numberOrNull(rule.buffer),
       consistencyPercent: numberOrNull(rule.consistencyPercent),
+      fundedConsistencyPercent: numberOrNull(rule.fundedConsistencyPercent),
       minTradingDays: rule.minTradingDays,
       minTradingDaysForPayout: rule.minTradingDaysForPayout,
       minPayoutTradingDays: rule.minPayoutTradingDays,
@@ -266,6 +267,7 @@ export async function getDashboardData(): Promise<AppData> {
       defaultPurchasePrice: numberOrNull(rule.defaultPurchasePrice),
       defaultActivationPrice: numberOrNull(rule.defaultActivationPrice ?? rule.activationPrice),
       defaultResetPrice: numberOrNull(rule.defaultResetPrice),
+      defaultFundedResetPrice: numberOrNull(rule.defaultFundedResetPrice),
       promoNote: rule.promoNote ?? rule.promo,
       notes: rule.notes,
       isStandard: rule.isStandard,

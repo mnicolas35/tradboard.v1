@@ -5,16 +5,18 @@ import { useState } from "react";
 import { createPropFirmRule, updatePropFirmRule } from "@/server/actions/tradboard-actions";
 import type { AppData, SelectOption } from "@/types";
 import {
-  accountTypeOptions,
   ActiveCheckbox,
   Field,
-  SelectField,
-  TextArea
+  SelectField
 } from "./FormControls";
 
 type PropFirmRuleFormProps = {
   propFirms: SelectOption[];
   initialRule?: AppData["propFirmRules"][number] | null;
+  defaultPropFirmId?: string | null;
+  propFirmLabel?: string | null;
+  compact?: boolean;
+  allowStandardToggle?: boolean;
   onCancel?: () => void;
   onSuccess?: () => void;
 };
@@ -23,11 +25,21 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Enregistrement impossible.";
 }
 
-export function PropFirmRuleForm({ propFirms, initialRule, onCancel, onSuccess }: PropFirmRuleFormProps) {
+export function PropFirmRuleForm({
+  propFirms,
+  initialRule,
+  defaultPropFirmId,
+  propFirmLabel,
+  compact = false,
+  allowStandardToggle = false,
+  onCancel,
+  onSuccess
+}: PropFirmRuleFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = Boolean(initialRule);
+  const selectedPropFirmLabel = propFirmLabel ?? propFirms.find((propFirm) => propFirm.id === defaultPropFirmId)?.label ?? null;
 
   return (
     <form
@@ -53,47 +65,49 @@ export function PropFirmRuleForm({ propFirms, initialRule, onCancel, onSuccess }
           setIsSubmitting(false);
         }
       }}
-    >
+      >
       <div className="panel-header">
-        <h2>{isEditing ? "Modifier la regle" : "Ajouter une regle prop firm"}</h2>
+        <h2>{isEditing ? "Modifier la regle" : compact ? "Ajouter une regle" : "Ajouter une regle prop firm"}</h2>
+        {selectedPropFirmLabel ? <p className="form-note">{selectedPropFirmLabel}</p> : null}
       </div>
       <div className="form-grid">
-        <SelectField label="Prop firm" name="propFirmId" options={propFirms} required defaultValue={initialRule?.propFirmId} />
-        <Field label="Nom de regle" name="name" required defaultValue={initialRule?.name} />
-        <SelectField label="Type compte" name="accountType" options={accountTypeOptions} required defaultValue={initialRule?.accountType} />
-        <Field label="Taille" name="accountSize" placeholder="50000" required type="number" defaultValue={initialRule?.accountSize} />
-        <Field label="Target" name="target" required type="number" defaultValue={initialRule?.target} />
-        <Field label="Max drawdown" name="maxDrawdown" required type="number" defaultValue={initialRule?.maxDrawdown} />
-        <Field label="Daily drawdown" name="dailyDrawdown" type="number" defaultValue={initialRule?.dailyDrawdown ?? undefined} />
-        <Field label="Buffer" name="buffer" type="number" defaultValue={initialRule?.buffer ?? undefined} />
-        <Field label="Buffer payout" name="payoutBuffer" type="number" defaultValue={initialRule?.payoutBuffer ?? undefined} />
-        <SelectField
-          label="Type regle payout"
-          name="payoutRuleType"
-          options={[
-            { id: "NONE", label: "NONE" },
-            { id: "BUFFER_ONLY", label: "BUFFER_ONLY" },
-            { id: "APEX", label: "APEX" },
-            { id: "TAKE_PROFIT_TRADER", label: "TAKE_PROFIT_TRADER" },
-            { id: "CUSTOM", label: "CUSTOM" }
-          ]}
-          defaultValue={initialRule?.payoutRuleType ?? "NONE"}
-        />
-        <Field label="Consistance %" name="consistencyPercent" type="number" defaultValue={initialRule?.consistencyPercent ?? undefined} />
-        <Field label="Part trader %" name="traderSharePercent" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
-        <Field label="Jours min validation eval" name="minTradingDays" type="number" defaultValue={initialRule?.minTradingDays ?? undefined} />
-        <Field label="Jours min payout" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
-        <Field label="Jours payout valides" name="minPayoutTradingDays" type="number" defaultValue={initialRule?.minPayoutTradingDays ?? undefined} />
-        <Field label="Profit min / jour payout" name="minDailyProfitForPayout" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
-        <Field label="Prix achat par defaut" name="defaultPurchasePrice" type="number" defaultValue={initialRule?.defaultPurchasePrice ?? undefined} />
-        <Field label="Prix activation par defaut" name="defaultActivationPrice" type="number" defaultValue={initialRule?.defaultActivationPrice ?? undefined} />
-        <Field label="Prix reset par defaut" name="defaultResetPrice" type="number" defaultValue={initialRule?.defaultResetPrice ?? undefined} />
-        <Field label="Note promo" name="promoNote" defaultValue={initialRule?.promoNote ?? undefined} />
-        <TextArea label="Notes" name="notes" defaultValue={initialRule?.notes} />
-        <label className="check-field">
-          <input defaultChecked={initialRule?.isStandard ?? false} name="isStandard" type="checkbox" />
-          <span>Regle standard visible par tous (admin)</span>
-        </label>
+        {defaultPropFirmId ? (
+          <input name="propFirmId" type="hidden" value={defaultPropFirmId} />
+        ) : (
+          <SelectField label="Prop firm" name="propFirmId" options={propFirms} required defaultValue={initialRule?.propFirmId} />
+        )}
+        <input name="accountType" type="hidden" value={initialRule?.accountType ?? "EVALUATION"} />
+        <Field label="Nom règle" name="name" required defaultValue={initialRule?.name} />
+        <Field label="Taille du compte" name="accountSize" placeholder="50000" required type="number" defaultValue={initialRule?.accountSize} />
+        <Field label="Drawdown" name="maxDrawdown" required type="number" defaultValue={initialRule?.maxDrawdown} />
+        <Field label="Coût du compte" name="defaultPurchasePrice" type="number" defaultValue={initialRule?.defaultPurchasePrice ?? undefined} />
+        <Field label="Coût reset évaluation" name="defaultResetPrice" type="number" defaultValue={initialRule?.defaultResetPrice ?? undefined} />
+        <Field label="Coût reset funded (PA)" name="defaultFundedResetPrice" type="number" defaultValue={initialRule?.defaultFundedResetPrice ?? undefined} />
+      </div>
+      <div className="rule-section">
+        <div className="rule-section-title">Évaluation</div>
+        <div className="form-grid">
+          <Field label="Target" name="target" required type="number" defaultValue={initialRule?.target} />
+          <Field label="Consistance" name="consistencyPercent" type="number" defaultValue={initialRule?.consistencyPercent ?? undefined} />
+          <Field label="Nombre de jours de trade minimum" name="minTradingDays" type="number" defaultValue={initialRule?.minTradingDays ?? undefined} />
+        </div>
+      </div>
+      <div className="rule-section">
+        <div className="rule-section-title">Funded</div>
+        <div className="form-grid">
+          <Field label="Buffer" name="buffer" type="number" defaultValue={initialRule?.buffer ?? undefined} />
+          <Field label="Consistance" name="fundedConsistencyPercent" type="number" defaultValue={initialRule?.fundedConsistencyPercent ?? undefined} />
+          <Field label="Jours de trade minimum" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
+          <Field label="Montant minimum par jour" name="minDailyProfitForPayout" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
+        </div>
+      </div>
+      <div className="form-grid">
+        {allowStandardToggle ? (
+          <label className="check-field">
+            <input defaultChecked={initialRule?.isStandard ?? false} name="isStandard" type="checkbox" />
+            <span>Règle standard visible par tous</span>
+          </label>
+        ) : null}
         <ActiveCheckbox defaultChecked={initialRule?.isActive ?? true} />
       </div>
       {error ? <p className="form-error">{error}</p> : null}

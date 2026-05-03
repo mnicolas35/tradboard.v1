@@ -5,18 +5,20 @@ import { useState } from "react";
 import { createAccount } from "@/server/actions/tradboard-actions";
 import type { AppData } from "@/types";
 import {
-  accountTypeOptions,
-  currencyOptions,
   Field,
-  platformOptions,
   SelectField,
   TextArea
 } from "./FormControls";
 
-type AccountFormProps = Pick<AppData, "propFirms" | "propFirmRules" | "accounts"> & {
+type AccountFormProps = Pick<AppData, "propFirms" | "propFirmRules"> & {
   onCancel?: () => void;
   onSuccess?: () => void;
 };
+
+const accountTypeOptions = [
+  { id: "EVALUATION", label: "EVALUATION" },
+  { id: "FUNDED", label: "FUNDED" }
+];
 
 const statusOptions = [
   { id: "ACTIVE", label: "ACTIVE" },
@@ -30,10 +32,20 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Enregistrement impossible.";
 }
 
-export function AccountForm({ propFirms, propFirmRules, accounts = [], onCancel, onSuccess }: AccountFormProps) {
+export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: AccountFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedPropFirmId, setSelectedPropFirmId] = useState("");
+  const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [promoPercent, setPromoPercent] = useState("");
+
+  const filteredRules = propFirmRules.filter((rule) => rule.propFirmId === selectedPropFirmId);
+  const selectedRule = propFirmRules.find((rule) => rule.id === selectedRuleId) ?? null;
+  const baseCost = selectedRule?.defaultPurchasePrice ?? 0;
+  const promoValue = Number(promoPercent || 0);
+  const promo = Number.isNaN(promoValue) ? 0 : Math.min(Math.max(promoValue, 0), 100);
+  const realCost = baseCost > 0 ? baseCost * (1 - promo / 100) : null;
 
   return (
     <form
@@ -58,26 +70,62 @@ export function AccountForm({ propFirms, propFirmRules, accounts = [], onCancel,
         <h2>Ajouter un compte</h2>
       </div>
       <div className="form-grid">
-        <SelectField label="Prop firm" name="propFirmId" options={propFirms} required />
-        <SelectField label="Regle liee" name="propFirmRuleId" options={propFirmRules} />
-        <SelectField
-          label="Compte parent"
-          name="parentAccountId"
-          options={accounts.map((account) => ({ id: account.id, label: account.name }))}
-        />
-        <SelectField label="Type de compte" name="accountType" options={accountTypeOptions} required />
-        <Field label="Taille" name="accountSize" placeholder="50000" required type="number" />
-        <Field label="Nom personnalise" name="name" required />
-        <Field label="Numero de compte" name="accountNumber" />
-        <SelectField label="Plateforme" name="platform" options={platformOptions} />
-        <SelectField label="Devise" name="currency" options={currencyOptions} defaultValue="USD" required />
-        <Field label="Date achat" name="purchaseDate" type="date" />
-        <Field label="Prix paye" name="purchasePrice" type="number" />
-        <Field label="Promo utilisee" name="promoUsed" />
+        <label className="form-field">
+          <span>PropFirm</span>
+          <select
+            name="propFirmId"
+            required
+            value={selectedPropFirmId}
+            onChange={(event) => {
+              setSelectedPropFirmId(event.target.value);
+              setSelectedRuleId("");
+            }}
+          >
+            <option value="">Selectionner</option>
+            {propFirms.map((propFirm) => (
+              <option key={propFirm.id} value={propFirm.id}>
+                {propFirm.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Règle liée à cette PropFirm</span>
+          <select
+            name="propFirmRuleId"
+            required
+            value={selectedRuleId}
+            onChange={(event) => setSelectedRuleId(event.target.value)}
+          >
+            <option value="">Selectionner</option>
+            {filteredRules.map((rule) => (
+              <option key={rule.id} value={rule.id}>
+                {rule.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <SelectField label="Type de compte" name="accountType" options={accountTypeOptions} defaultValue="EVALUATION" required />
+        <Field label="Date d'achat" name="purchaseDate" type="date" />
+        <label className="form-field">
+          <span>Promo en %</span>
+          <input
+            name="promoPercent"
+            type="number"
+            value={promoPercent}
+            onChange={(event) => setPromoPercent(event.target.value)}
+          />
+        </label>
         <Field label="Date activation" name="activationDate" type="date" />
         <SelectField label="Statut" name="status" options={statusOptions} defaultValue="ACTIVE" required />
         <TextArea label="Notes" name="notes" />
       </div>
+      {selectedRule ? (
+        <p className="form-note">
+          Coût règle: {baseCost.toFixed(2)} USD
+          {realCost !== null ? ` - Coût réel: ${realCost.toFixed(2)} USD` : ""}
+        </p>
+      ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       <div className="form-actions split">
         <button className="button secondary" disabled={isSubmitting} type="button" onClick={onCancel}>
