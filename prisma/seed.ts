@@ -32,6 +32,7 @@ async function main() {
     update: {},
     create: {
       name: "Apex Trader Funding",
+      acronym: "APX",
       website: "https://apextraderfunding.com",
       notes: "Prop firm futures utilisee pour les exemples."
     }
@@ -42,6 +43,7 @@ async function main() {
     update: {},
     create: {
       name: "Topstep",
+      acronym: "TPS",
       website: "https://www.topstep.com",
       notes: "Prop firm futures utilisee pour les exemples."
     }
@@ -57,23 +59,39 @@ async function main() {
       maxDrawdown: "2500",
       dailyDrawdown: "0",
       minTradingDays: 7,
+      minTradingDaysForPayout: 10,
+      minPayoutTradingDays: 5,
+      minDailyProfitForPayout: "250",
+      payoutRuleType: "APEX",
+      traderSharePercent: "90",
       defaultPurchasePrice: "147",
       defaultResetPrice: "80",
-      notes: "Regle d'exemple a ajuster selon les conditions reelles."
+      promo: "Promo exemple",
+      notes: "Regle d'exemple a ajuster selon les conditions reelles.",
+      isStandard: true
     }
   });
 
-  const apexPa50k = await prisma.propFirmRule.create({
+  const apexFunded50k = await prisma.propFirmRule.create({
     data: {
       propFirmId: apex.id,
-      name: "PA 50K",
-      accountType: "PA",
+      name: "Funded 50K",
+      accountType: "FUNDED",
       accountSize: "50000",
       target: "0",
       maxDrawdown: "2500",
       buffer: "2600",
+      payoutBuffer: "2600",
+      minTradingDaysForPayout: 10,
+      minPayoutTradingDays: 5,
+      minDailyProfitForPayout: "250",
+      payoutRuleType: "APEX",
+      traderSharePercent: "90",
+      activationPrice: "85",
+      defaultActivationPrice: "85",
       defaultResetPrice: "85",
-      notes: "Compte PA d'exemple."
+      notes: "Compte funded d'exemple.",
+      isStandard: true
     }
   });
 
@@ -87,8 +105,13 @@ async function main() {
       maxDrawdown: "3000",
       dailyDrawdown: "2000",
       minTradingDays: 5,
+      minTradingDaysForPayout: 5,
+      minPayoutTradingDays: 5,
+      payoutRuleType: "BUFFER_ONLY",
+      traderSharePercent: "90",
       defaultPurchasePrice: "165",
-      notes: "Regle d'exemple a ajuster selon les conditions reelles."
+      notes: "Regle d'exemple a ajuster selon les conditions reelles.",
+      isStandard: true
     }
   });
 
@@ -98,26 +121,33 @@ async function main() {
       propFirmId: apex.id,
       propFirmRuleId: apexEval50k.id,
       name: "Apex Eval 50K #1",
+      accountNumber: "APX-EVAL-001",
+      platform: "RITHMIC",
+      currency: "USD",
       accountType: "EVALUATION",
       accountSize: "50000",
       status: "ACTIVE",
       purchaseDate: date("2026-04-02"),
       purchasePrice: "147",
+      promoUsed: "SPRING",
       notes: "Compte demo pour le dashboard initial."
     }
   });
 
-  const paAccount = await prisma.account.create({
+  const fundedAccount = await prisma.account.create({
     data: {
       userId: user.id,
       propFirmId: apex.id,
-      propFirmRuleId: apexPa50k.id,
-      name: "Apex PA 50K #1",
-      accountType: "PA",
+      propFirmRuleId: apexFunded50k.id,
+      name: "Apex Funded 50K #1",
+      accountNumber: "APX-FUN-001",
+      platform: "TRADOVATE",
+      currency: "USD",
+      accountType: "FUNDED",
       accountSize: "50000",
       status: "ACTIVE",
       activationDate: date("2026-04-18"),
-      notes: "Compte PA demo."
+      notes: "Compte funded demo."
     }
   });
 
@@ -127,6 +157,8 @@ async function main() {
       propFirmId: topstep.id,
       propFirmRuleId: topstepEval100k.id,
       name: "Topstep Eval 100K Admin",
+      platform: "NINJATRADER",
+      currency: "USD",
       accountType: "EVALUATION",
       accountSize: "100000",
       status: "PASSED",
@@ -154,7 +186,7 @@ async function main() {
       },
       {
         userId: user.id,
-        accountId: paAccount.id,
+        accountId: fundedAccount.id,
         tradeDate: date("2026-05-01"),
         profitLoss: "760.25",
         tradeCount: 8,
@@ -190,7 +222,7 @@ async function main() {
       },
       {
         userId: user.id,
-        accountId: paAccount.id,
+        accountId: fundedAccount.id,
         type: "ACTIVATION",
         amount: "85.00",
         expenseDate: date("2026-04-18")
@@ -209,7 +241,7 @@ async function main() {
     data: [
       {
         userId: user.id,
-        accountId: paAccount.id,
+        accountId: fundedAccount.id,
         amount: "500.00",
         payoutDate: date("2026-05-08"),
         status: "PENDING",
@@ -223,6 +255,29 @@ async function main() {
         status: "PAID"
       }
     ]
+  });
+
+  await prisma.exchangeRate.upsert({
+    where: {
+      userId_baseCurrency_targetCurrency_rateDate: {
+        userId: user.id,
+        baseCurrency: "USD",
+        targetCurrency: "EUR",
+        rateDate: date("2026-05-01")
+      }
+    },
+    update: {
+      rate: "0.93",
+      source: "Seed manuel"
+    },
+    create: {
+      userId: user.id,
+      baseCurrency: "USD",
+      targetCurrency: "EUR",
+      rate: "0.93",
+      rateDate: date("2026-05-01"),
+      source: "Seed manuel"
+    }
   });
 
   console.log("Seed complete", {

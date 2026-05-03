@@ -28,15 +28,15 @@ function toNumber(value: DecimalLike) {
   return Number(value);
 }
 
-function sum(values: DecimalLike[]) {
-  return values.reduce((total, value) => total + toNumber(value), 0);
+function sum(values: DecimalLike[]): number {
+  return values.reduce<number>((total, value) => total + toNumber(value), 0);
 }
 
-export function getTotalProfitLoss(rows: ProfitLossRow[]) {
+export function getTotalProfitLossUsd(rows: ProfitLossRow[]) {
   return sum(rows.map((row) => row.profitLoss));
 }
 
-export function getMonthlyProfitLoss(rows: ProfitLossRow[], date = new Date()) {
+export function getMonthlyProfitLossUsd(rows: ProfitLossRow[], date = new Date()) {
   const month = date.getMonth();
   const year = date.getFullYear();
 
@@ -53,11 +53,11 @@ export function getMonthlyProfitLoss(rows: ProfitLossRow[], date = new Date()) {
   );
 }
 
-export function getTotalExpenses(rows: ExpenseRow[]) {
+export function getTotalExpensesUsd(rows: ExpenseRow[]) {
   return sum(rows.map((row) => row.amount));
 }
 
-export function getTotalPayouts(rows: PayoutRow[]) {
+export function getTotalPayoutsUsd(rows: PayoutRow[]) {
   return sum(
     rows
       .filter((row) => row.status === undefined || row.status === "PAID")
@@ -65,10 +65,16 @@ export function getTotalPayouts(rows: PayoutRow[]) {
   );
 }
 
-export function getNetResult(profitLoss: number, expenses: number, payouts: number) {
+export function getNetResultUsd(profitLoss: number, expenses: number, payouts: number) {
   return profitLoss + payouts - expenses;
 }
 
 export function getActiveAccountsCount(rows: AccountRow[]) {
   return rows.filter((row) => row.status === "ACTIVE").length;
 }
+
+export const getTotalProfitLoss = getTotalProfitLossUsd;
+export const getMonthlyProfitLoss = getMonthlyProfitLossUsd;
+export const getTotalExpenses = getTotalExpensesUsd;
+export const getTotalPayouts = getTotalPayoutsUsd;
+export const getNetResult = getNetResultUsd;

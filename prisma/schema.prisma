@@ -14,7 +14,6 @@ enum UserRole {
 
 enum AccountType {
   EVALUATION
-  PA
   FUNDED
 }
 
@@ -24,6 +23,21 @@ enum AccountStatus {
   FAILED
   CLOSED
   ARCHIVED
+}
+
+enum Currency {
+  USD
+  EUR
+}
+
+enum AccountPlatform {
+  RITHMIC
+  TRADOVATE
+  NINJATRADER
+  MT5
+  DXTRADE
+  MATCHTRADER
+  OTHER
 }
 
 enum ExpenseType {
@@ -40,12 +54,26 @@ enum PayoutStatus {
   CANCELLED
 }
 
+enum ThemePreference {
+  LIGHT
+  DARK
+}
+
+enum PayoutRuleType {
+  NONE
+  BUFFER_ONLY
+  APEX
+  TAKE_PROFIT_TRADER
+  CUSTOM
+}
+
 model User {
   id          String           @id @default(cuid())
   email       String           @unique
   name        String
   role        UserRole         @default(USER)
   googleId    String?          @unique
+  themePreference ThemePreference @default(LIGHT)
   isActive    Boolean          @default(true)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -53,6 +81,9 @@ model User {
   tradingDays TradingDay[]
   expenses    AccountExpense[]
   payouts     Payout[]
+  exchangeRates ExchangeRate[]
+  createdRules PropFirmRule[]
+  propFirmOrders UserPropFirmOrder[]
 
   @@index([role])
   @@index([isActive])
@@ -61,6 +92,7 @@ model User {
 model PropFirm {
   id        String         @id @default(cuid())
   name      String         @unique
+  acronym   String         @default("PF")
   website   String?
   notes     String?
   isActive  Boolean        @default(true)
@@ -68,13 +100,30 @@ model PropFirm {
   updatedAt DateTime       @updatedAt
   rules     PropFirmRule[]
   accounts  Account[]
+  userOrders UserPropFirmOrder[]
 
   @@index([isActive])
+}
+
+model UserPropFirmOrder {
+  id         String   @id @default(cuid())
+  userId     String
+  propFirmId String
+  sortOrder  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  propFirm   PropFirm @relation(fields: [propFirmId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propFirmId])
+  @@index([userId])
+  @@index([propFirmId])
 }
 
 model PropFirmRule {
   id                   String      @id @default(cuid())
   propFirmId           String
+  createdByUserId      String?
   name                 String
   accountType          AccountType
   accountSize          Decimal     @db.Decimal(12, 2)
@@ -82,19 +131,33 @@ model PropFirmRule {
   maxDrawdown          Decimal     @db.Decimal(12, 2)
   dailyDrawdown        Decimal?    @db.Decimal(12, 2)
   buffer               Decimal?    @db.Decimal(12, 2)
+  payoutBuffer         Decimal?    @db.Decimal(12, 2)
   consistencyPercent   Decimal?    @db.Decimal(5, 2)
   minTradingDays       Int?
+  minTradingDaysForPayout Int?
+  minPayoutTradingDays Int?
+  minDailyProfitForPayout Decimal? @db.Decimal(12, 2)
+  payoutRuleType       PayoutRuleType @default(NONE)
+  traderSharePercent   Decimal?    @db.Decimal(5, 2)
   defaultPurchasePrice Decimal?    @db.Decimal(12, 2)
+  activationPrice      Decimal?    @db.Decimal(12, 2)
+  defaultActivationPrice Decimal?   @db.Decimal(12, 2)
   defaultResetPrice    Decimal?    @db.Decimal(12, 2)
+  promo                String?
+  promoNote            String?
   notes                String?
+  isStandard           Boolean     @default(false)
   isActive             Boolean     @default(true)
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   propFirm             PropFirm    @relation(fields: [propFirmId], references: [id], onDelete: Restrict)
+  createdByUser        User?       @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   accounts             Account[]
 
   @@index([propFirmId])
+  @@index([createdByUserId])
   @@index([accountType])
+  @@index([isStandard])
   @@index([isActive])
 }
 
@@ -103,12 +166,17 @@ model Account {
   userId         String
   propFirmId     String
   propFirmRuleId String?
+  parentAccountId String?
   name           String
+  accountNumber  String?
+  platform       AccountPlatform?
+  currency       Currency         @default(USD)
   accountType    AccountType
   accountSize    Decimal          @db.Decimal(12, 2)
   status         AccountStatus    @default(ACTIVE)
   purchaseDate   DateTime?
   purchasePrice  Decimal?         @db.Decimal(12, 2)
+  promoUsed      String?
   activationDate DateTime?
   notes          String?
   createdAt      DateTime         @default(now())
@@ -116,6 +184,9 @@ model Account {
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   propFirm       PropFirm         @relation(fields: [propFirmId], references: [id], onDelete: Restrict)
   propFirmRule   PropFirmRule?    @relation(fields: [propFirmRuleId], references: [id], onDelete: SetNull)
+  parentAccount  Account?         @relation("AccountParent", fields: [parentAccountId], references: [id], onDelete: SetNull)
+  childAccounts  Account[]        @relation("AccountParent")
+  ruleOverride   AccountRuleOverride?
   tradingDays    TradingDay[]
   expenses       AccountExpense[]
   payouts        Payout[]
@@ -123,8 +194,34 @@ model Account {
   @@index([userId])
   @@index([propFirmId])
   @@index([propFirmRuleId])
+  @@index([parentAccountId])
   @@index([status])
   @@index([accountType])
+  @@index([platform])
+}
+
+model AccountRuleOverride {
+  id                       String          @id @default(cuid())
+  accountId                String          @unique
+  target                   Decimal?        @db.Decimal(12, 2)
+  maxDrawdown              Decimal?        @db.Decimal(12, 2)
+  dailyDrawdown            Decimal?        @db.Decimal(12, 2)
+  buffer                   Decimal?        @db.Decimal(12, 2)
+  payoutBuffer             Decimal?        @db.Decimal(12, 2)
+  minTradingDays           Int?
+  minPayoutTradingDays     Int?
+  minDailyProfitForPayout  Decimal?        @db.Decimal(12, 2)
+  consistencyPercent       Decimal?        @db.Decimal(5, 2)
+  payoutRuleType           PayoutRuleType?
+  traderSharePercent       Decimal?        @db.Decimal(5, 2)
+  defaultPurchasePrice     Decimal?        @db.Decimal(12, 2)
+  defaultActivationPrice   Decimal?        @db.Decimal(12, 2)
+  defaultResetPrice        Decimal?        @db.Decimal(12, 2)
+  promoNote                String?
+  notes                    String?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  account                  Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model TradingDay {
@@ -151,6 +248,7 @@ model AccountExpense {
   accountId   String
   type        ExpenseType
   amount      Decimal     @db.Decimal(12, 2)
+  currency    Currency    @default(USD)
   expenseDate DateTime    @db.Date
   notes       String?
   createdAt   DateTime    @default(now())
@@ -169,6 +267,7 @@ model Payout {
   userId     String
   accountId  String
   amount     Decimal      @db.Decimal(12, 2)
+  currency   Currency     @default(USD)
   payoutDate DateTime     @db.Date
   status     PayoutStatus @default(PENDING)
   notes      String?
@@ -181,4 +280,22 @@ model Payout {
   @@index([accountId])
   @@index([payoutDate])
   @@index([status])
+}
+
+model ExchangeRate {
+  id             String   @id @default(cuid())
+  userId         String
+  baseCurrency   Currency
+  targetCurrency Currency
+  rate           Decimal  @db.Decimal(12, 6)
+  rateDate       DateTime @db.Date
+  source         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, baseCurrency, targetCurrency, rateDate])
+  @@index([userId])
+  @@index([baseCurrency, targetCurrency])
+  @@index([rateDate])
 }
