@@ -42,14 +42,17 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
   const router = useRouter();
   const [rateError, setRateError] = useState<string | null>(null);
   const [isUpdatingRate, setIsUpdatingRate] = useState(false);
-  const payoutAvailable = data.activeAccounts.reduce(
-    (total, account) => total + account.payoutEligibility.availableAmount,
-    0
+  const payoutEligibleAccounts = data.activeAccounts.filter(
+    (account) => account.accountType === "FUNDED" && account.payoutEligibility.isEligible
   );
-  const topAccounts = [...data.accounts].sort((a, b) => b.netResultUsd - a.netResultUsd).slice(0, 5);
-  const payoutAccounts = data.activeAccounts.filter((account) => account.payoutEligibility.availableAmount > 0);
+  const payoutAvailable = payoutEligibleAccounts.reduce((total, account) => total + account.payoutEligibility.availableAmount, 0);
+  const topAccounts = [...data.accounts].sort((a, b) => b.accountBalanceUsd - a.accountBalanceUsd).slice(0, 5);
+  const payoutAccounts = payoutEligibleAccounts;
   const alertAccounts = data.activeAccounts.filter(
-    (account) => account.payoutEligibility.reasons.length > 0 || account.status === "FAILED"
+    (account) =>
+      (account.accountType === "EVALUATION"
+        ? account.evaluationEligibility.reasons.length > 0
+        : account.payoutEligibility.reasons.length > 0) || account.status === "FAILED"
   );
   const metrics: DashboardMetric[] = [
     { label: "Comptes", value: String(data.metrics.activeAccountsCount) },
@@ -70,7 +73,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     },
     { label: "Dépenses", value: formatCurrency(data.metrics.totalExpensesUsd), tone: "negative" },
     { label: "Payouts", value: formatCurrency(data.metrics.totalPayoutsUsd), tone: "positive" },
-    { label: "Payout dispo", value: formatCurrency(payoutAvailable), tone: "positive" }
+    { label: "Payout possible", value: formatCurrency(payoutAvailable), tone: payoutAvailable > 0 ? "positive" : "default" }
   ];
 
   return (
@@ -125,7 +128,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                     <th>Compte</th>
                     <th>PF</th>
                     <th>Badges</th>
-                    <th>Net</th>
+                    <th>Solde</th>
                     <th>Payout</th>
                   </tr>
                 </thead>
@@ -133,10 +136,9 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                   {data.accounts.map((account) => (
                     <tr key={account.id}>
                       <td>
-                        <strong>{account.name}</strong>
+                        <strong>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</strong>
                         <div className="muted">
-                          {account.accountType} - {Math.round(account.accountSize / 1000)}k{" "}
-                          {account.accountNumber ? `#${account.accountNumber}` : ""}
+                          {account.accountType} - {Math.round(account.accountSize / 1000)}k
                         </div>
                       </td>
                       <td>{account.propFirmAcronym}</td>
@@ -149,10 +151,18 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                           ))}
                         </div>
                       </td>
-                      <td className={account.netResultUsd >= 0 ? "tone-positive" : "tone-negative"}>
-                        {formatCurrency(account.netResultUsd)}
+                      <td className={account.accountBalanceUsd >= account.accountSize ? "tone-positive" : "tone-negative"}>
+                        {formatCurrency(account.accountBalanceUsd)}
                       </td>
-                      <td>{formatCurrency(account.payoutEligibility.availableAmount)}</td>
+                      <td>
+                        {account.accountType !== "FUNDED"
+                          ? "-"
+                          : account.payoutEligibility.isEligible
+                            ? formatCurrency(account.payoutEligibility.availableAmount)
+                            : account.payoutEligibility.availableAmount > 0
+                              ? "Bloqué"
+                              : formatCurrency(0)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -171,7 +181,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                   <div className="activity-topline">
                     <span className="activity-account">
                       {day.propFirmAcronym} {Math.round(day.accountSize / 1000)}k{" "}
-                      {day.accountNumber ? `#${day.accountNumber}` : day.accountName}
+                      {day.accountNumber ? `#${day.accountNumber}` : "Sans numero"}
                     </span>
                     <span className={day.profitLossUsd < 0 ? "day-result negative" : "day-result"}>
                       {formatCurrency(day.profitLossUsd)}
@@ -193,8 +203,12 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
             <div className="side-list">
               {alertAccounts.slice(0, 6).map((account) => (
                 <article key={account.id}>
-                  <strong>{account.name}</strong>
-                  <span>{account.payoutEligibility.reasons[0] ?? account.status}</span>
+                  <strong>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</strong>
+                  <span>
+                    {account.accountType === "EVALUATION"
+                      ? account.evaluationEligibility.reasons[0] ?? account.status
+                      : account.payoutEligibility.reasons[0] ?? account.status}
+                  </span>
                 </article>
               ))}
             </div>
@@ -207,8 +221,8 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
             <div className="side-list">
               {topAccounts.map((account) => (
                 <article key={account.id}>
-                  <strong>{account.name}</strong>
-                  <span>{formatCurrency(account.netResultUsd)}</span>
+                  <strong>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</strong>
+                  <span>{formatCurrency(account.accountBalanceUsd)}</span>
                 </article>
               ))}
             </div>
@@ -221,7 +235,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
             <div className="side-list">
               {payoutAccounts.slice(0, 6).map((account) => (
                 <article key={account.id}>
-                  <strong>{account.name}</strong>
+                  <strong>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</strong>
                   <span>
                     Brut {formatCurrency(account.payoutEligibility.availableAmount)} · Net{" "}
                     {formatCurrency(account.payoutEligibility.netAmount)}

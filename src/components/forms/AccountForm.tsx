@@ -24,20 +24,25 @@ const statusOptions = [
   { id: "ACTIVE", label: "ACTIVE" },
   { id: "PASSED", label: "PASSED" },
   { id: "FAILED", label: "FAILED" },
-  { id: "CLOSED", label: "CLOSED" },
-  { id: "ARCHIVED", label: "ARCHIVED" }
+  { id: "CLOSED", label: "CLOSED" }
 ];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Enregistrement impossible.";
 }
 
+function todayDateValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: AccountFormProps) {
   const router = useRouter();
+  const today = todayDateValue();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPropFirmId, setSelectedPropFirmId] = useState("");
   const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [selectedAccountType, setSelectedAccountType] = useState("EVALUATION");
   const [promoPercent, setPromoPercent] = useState("");
 
   const filteredRules = propFirmRules.filter((rule) => rule.propFirmId === selectedPropFirmId);
@@ -105,8 +110,26 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             ))}
           </select>
         </label>
-        <SelectField label="Type de compte" name="accountType" options={accountTypeOptions} defaultValue="EVALUATION" required />
-        <Field label="Date d'achat" name="purchaseDate" type="date" />
+        <label className="form-field">
+          <span>Type de compte</span>
+          <select
+            name="accountType"
+            required
+            value={selectedAccountType}
+            onChange={(event) => {
+              setSelectedAccountType(event.target.value);
+              setSelectedRuleId("");
+            }}
+          >
+            {accountTypeOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Field label="Numéro du compte" name="accountNumber" placeholder="APX-001" required />
+        <Field label="Date de création" name="purchaseDate" type="date" required defaultValue={today} />
         <label className="form-field">
           <span>Promo en %</span>
           <input
@@ -116,7 +139,9 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             onChange={(event) => setPromoPercent(event.target.value)}
           />
         </label>
-        <Field label="Date activation" name="activationDate" type="date" />
+        {selectedAccountType === "FUNDED" ? (
+          <Field label="Date activation" name="activationDate" type="date" required defaultValue={today} />
+        ) : null}
         <SelectField label="Statut" name="status" options={statusOptions} defaultValue="ACTIVE" required />
         <TextArea label="Notes" name="notes" />
       </div>

@@ -22,7 +22,10 @@ export function PayoutForm({ accounts, onCancel, onSuccess }: PayoutFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const options = accounts.map((account) => ({ id: account.id, label: account.name }));
+  const options = accounts.map((account) => ({
+    id: account.id,
+    label: account.accountNumber ? `#${account.accountNumber}` : "Sans numero"
+  }));
 
   return (
     <form

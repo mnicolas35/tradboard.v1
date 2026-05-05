@@ -22,11 +22,24 @@ export function calculatePayoutEligibility(
   days: TradingDayForPayout[],
   rule: ResolvedAccountRule | null
 ): PayoutEligibility {
-  const buffer = rule?.payoutBuffer ?? rule?.buffer ?? 0;
-  const isApexRule = rule?.payoutRuleType === "APEX";
-  const isTakeProfitTraderRule = rule?.payoutRuleType === "TAKE_PROFIT_TRADER";
-  const minTradingDays = rule?.minPayoutTradingDays ?? (isApexRule ? 5 : 0);
-  const minDailyProfit = rule?.minDailyProfitForPayout ?? (isApexRule ? 250 : 0);
+  if (!rule) {
+    return {
+      isEligible: false,
+      availableAmount: 0,
+      netAmount: 0,
+      buffer: 0,
+      bufferReached: false,
+      missingBuffer: 0,
+      minTradingDays: 0,
+      validDays: 0,
+      consistencyOk: true,
+      reasons: ["Aucune regle funded associee au compte."]
+    };
+  }
+
+  const buffer = rule?.buffer ?? 0;
+  const minTradingDays = rule?.minPayoutTradingDays ?? 0;
+  const minDailyProfit = rule?.minDailyProfitForPayout ?? 0;
   const traderSharePercent = rule?.traderSharePercent ?? 100;
   const availableAmount = Math.max(0, currentResultUsd - buffer);
   const missingBuffer = Math.max(0, buffer - currentResultUsd);
@@ -35,16 +48,13 @@ export function calculatePayoutEligibility(
     minDailyProfit > 0 ? days.filter((day) => day.profitLossUsd >= minDailyProfit).length : days.length;
   const minDaysOk = validDays >= minTradingDays;
   const bestDay = Math.max(0, ...days.map((day) => day.profitLossUsd));
-  const consistencyPercent =
-    rule?.fundedConsistencyPercent ?? rule?.consistencyPercent ?? (isApexRule ? 50 : null);
-  const consistencyLimit =
-    consistencyPercent && !isTakeProfitTraderRule ? currentResultUsd * (consistencyPercent / 100) : null;
-  const consistencyOk = consistencyLimit === null || bestDay <= consistencyLimit;
+  const consistencyPercent = rule?.fundedConsistencyPercent ?? null;
+  const consistencyRatio = currentResultUsd > 0 ? bestDay / currentResultUsd : null;
+  const consistencyOk =
+    consistencyPercent === null
+      ? true
+      : consistencyRatio !== null && consistencyRatio <= consistencyPercent / 100;
   const reasons: string[] = [];
-
-  if (!rule) {
-    reasons.push("Aucune regle associee au compte.");
-  }
 
   if (!bufferReached) {
     reasons.push(`Buffer manquant: ${missingBuffer.toFixed(2)} USD.`);
@@ -55,7 +65,13 @@ export function calculatePayoutEligibility(
   }
 
   if (!consistencyOk) {
-    reasons.push("Consistance non respectee.");
+    const requiredProfit = consistencyPercent && consistencyPercent > 0 ? bestDay / (consistencyPercent / 100) : null;
+    const missingProfit = requiredProfit === null ? null : Math.max(0, requiredProfit - currentResultUsd);
+    reasons.push(
+      missingProfit && missingProfit > 0
+        ? `Consistance funded non respectee: augmentez le profit total de ${missingProfit.toFixed(2)} USD pour diluer le meilleur jour.`
+        : "Consistance funded non respectee: augmentez le profit total pour diluer le meilleur jour."
+    );
   }
 
   if (availableAmount <= 0) {

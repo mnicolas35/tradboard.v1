@@ -6,12 +6,15 @@ import type {
   AccountType,
   Currency,
   ExpenseType,
-  PayoutStatus
+  PayoutStatus,
+  Prisma
 } from "@prisma/client";
 import type { PayoutRuleType, ThemePreference } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { isSupportedCurrency } from "@/lib/currency";
+import { calculateEvaluationEligibility } from "@/lib/evaluation";
 import { prisma } from "@/lib/prisma";
+import { resolveAccountRule } from "@/lib/rules";
 import { getCurrentUser } from "@/server/auth/current-user";
 
 function text(formData: FormData, key: string) {
@@ -40,6 +43,10 @@ function requiredText(formData: FormData, key: string) {
 function optionalDate(formData: FormData, key: string) {
   const value = text(formData, key);
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
+}
+
+function todayUtcDate() {
+  return new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
 }
 
 function requiredDate(formData: FormData, key: string) {
@@ -98,7 +105,7 @@ function accountType(formData: FormData): AccountType {
 
 function accountStatus(formData: FormData): AccountStatus {
   const value = requiredText(formData, "status");
-  const values: AccountStatus[] = ["ACTIVE", "PASSED", "FAILED", "CLOSED", "ARCHIVED"];
+  const values: AccountStatus[] = ["ACTIVE", "PASSED", "FAILED", "CLOSED"];
 
   if (!values.includes(value as AccountStatus)) {
     throw new Error("Statut invalide.");
@@ -109,6 +116,22 @@ function accountStatus(formData: FormData): AccountStatus {
 
 function refresh() {
   revalidatePath("/");
+}
+
+function evaluationDays(tradingDays: Array<{ tradeDate: Date; profitLoss: Prisma.Decimal }>, startDate: Date | null) {
+  const totals = new Map<string, number>();
+  const start = startDate?.toISOString().slice(0, 10) ?? null;
+
+  for (const day of tradingDays) {
+    const key = day.tradeDate.toISOString().slice(0, 10);
+    if (start && key < start) {
+      continue;
+    }
+
+    totals.set(key, (totals.get(key) ?? 0) + Number(day.profitLoss));
+  }
+
+  return [...totals.values()].map((profitLossUsd) => ({ profitLossUsd }));
 }
 
 async function assertAdmin() {
@@ -190,6 +213,7 @@ export async function createPropFirmRule(formData: FormData) {
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
       fundedConsistencyPercent: optionalDecimal(formData, "fundedConsistencyPercent"),
       minTradingDays: optionalInt(formData, "minTradingDays"),
+      minDailyProfit: optionalDecimal(formData, "minDailyProfit"),
       minTradingDaysForPayout: optionalInt(formData, "minTradingDaysForPayout"),
       minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays") ?? optionalInt(formData, "minTradingDaysForPayout"),
       minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
@@ -218,7 +242,8 @@ async function assertCanManagePropFirmRule(ruleId: string) {
     select: {
       id: true,
       isStandard: true,
-      createdByUserId: true
+      createdByUserId: true,
+      propFirmId: true
     }
   });
 
@@ -239,40 +264,48 @@ export async function updatePropFirmRule(formData: FormData) {
   const { currentUser, rule } = await assertCanManagePropFirmRule(id);
   const requestedStandard = formData.get("isStandard") === "on";
   const isStandard = currentUser.role === "ADMIN" ? requestedStandard : false;
+  const propFirmId = optionalText(formData, "propFirmId") ?? rule.propFirmId;
 
-  await prisma.propFirmRule.update({
-    where: { id },
-    data: {
-      propFirmId: requiredText(formData, "propFirmId"),
-      createdByUserId: isStandard ? null : rule.createdByUserId ?? currentUser.id,
-      name: requiredText(formData, "name"),
-      accountType: requiredText(formData, "accountType") as AccountType,
-      accountSize: requiredDecimal(formData, "accountSize"),
-      target: requiredDecimal(formData, "target"),
-      maxDrawdown: requiredDecimal(formData, "maxDrawdown"),
-      dailyDrawdown: optionalDecimal(formData, "dailyDrawdown"),
-      buffer: optionalDecimal(formData, "buffer"),
-      payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
-      consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
-      fundedConsistencyPercent: optionalDecimal(formData, "fundedConsistencyPercent"),
-      minTradingDays: optionalInt(formData, "minTradingDays"),
-      minTradingDaysForPayout: optionalInt(formData, "minTradingDaysForPayout"),
-      minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays") ?? optionalInt(formData, "minTradingDaysForPayout"),
-      minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
-      payoutRuleType: optionalRuleType(formData) ?? "NONE",
-      traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
-      defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
-      activationPrice: optionalDecimal(formData, "activationPrice"),
-      defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
-      defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),
-      defaultFundedResetPrice: optionalDecimal(formData, "defaultFundedResetPrice"),
-      promo: optionalText(formData, "promo"),
-      promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
-      notes: optionalText(formData, "notes"),
-      isStandard,
-      isActive: formData.get("isActive") === "on"
-    }
-  });
+  await prisma.$transaction([
+    prisma.propFirmRule.update({
+      where: { id },
+      data: {
+        propFirmId,
+        createdByUserId: isStandard ? null : rule.createdByUserId ?? currentUser.id,
+        name: requiredText(formData, "name"),
+        accountType: requiredText(formData, "accountType") as AccountType,
+        accountSize: requiredDecimal(formData, "accountSize"),
+        target: requiredDecimal(formData, "target"),
+        maxDrawdown: requiredDecimal(formData, "maxDrawdown"),
+        dailyDrawdown: optionalDecimal(formData, "dailyDrawdown"),
+        buffer: optionalDecimal(formData, "buffer"),
+        payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
+        consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
+        fundedConsistencyPercent: optionalDecimal(formData, "fundedConsistencyPercent"),
+        minTradingDays: optionalInt(formData, "minTradingDays"),
+        minDailyProfit: optionalDecimal(formData, "minDailyProfit"),
+        minTradingDaysForPayout: optionalInt(formData, "minTradingDaysForPayout"),
+        minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays") ?? optionalInt(formData, "minTradingDaysForPayout"),
+        minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
+        payoutRuleType: optionalRuleType(formData) ?? "NONE",
+        traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
+        defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
+        activationPrice: optionalDecimal(formData, "activationPrice"),
+        defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
+        defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),
+        defaultFundedResetPrice: optionalDecimal(formData, "defaultFundedResetPrice"),
+        promo: optionalText(formData, "promo"),
+        promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
+        notes: optionalText(formData, "notes"),
+        isStandard,
+        isActive: formData.get("isActive") === "on"
+      }
+    }),
+    prisma.account.updateMany({
+      where: { propFirmRuleId: id },
+      data: { updatedAt: new Date() }
+    })
+  ]);
 
   refresh();
 }
@@ -314,6 +347,10 @@ export async function createAccount(formData: FormData) {
   const purchasePrice =
     defaultPurchasePrice === null ? null : (defaultPurchasePrice * (100 - promoPercent)) / 100;
   const promoUsed = promoPercent > 0 ? `${promoPercent}%` : null;
+  const generatedName = `${rule.propFirm.acronym} ${rule.name}`;
+  const purchaseDate = requiredDate(formData, "purchaseDate");
+  const activationDate =
+    selectedAccountType === "FUNDED" ? requiredDate(formData, "activationDate") : null;
 
   await prisma.account.create({
     data: {
@@ -323,14 +360,14 @@ export async function createAccount(formData: FormData) {
       parentAccountId: null,
       accountType: selectedAccountType,
       accountSize: rule.accountSize,
-      name: `${rule.propFirm.acronym} ${rule.name}`,
-      accountNumber: null,
+      name: generatedName,
+      accountNumber: optionalText(formData, "accountNumber"),
       platform: null,
       currency: "USD",
-      purchaseDate: optionalDate(formData, "purchaseDate"),
+      purchaseDate,
       purchasePrice,
       promoUsed,
-      activationDate: optionalDate(formData, "activationDate"),
+      activationDate,
       status: accountStatus(formData),
       notes: optionalText(formData, "notes")
     }
@@ -342,24 +379,13 @@ export async function createAccount(formData: FormData) {
 export async function createTradingDay(formData: FormData) {
   const currentUser = await getCurrentUser();
   const accountId = requiredText(formData, "accountId");
-  const tradeDate = requiredDate(formData, "tradeDate");
+  const tradeDate = optionalDate(formData, "tradeDate") ?? todayUtcDate();
   const profitLoss = requiredDecimal(formData, "profitLoss");
 
   await assertOwnAccount(accountId, currentUser.id);
 
-  await prisma.tradingDay.upsert({
-    where: {
-      accountId_tradeDate: {
-        accountId,
-        tradeDate
-      }
-    },
-    update: {
-      profitLoss,
-      tradeCount: optionalInt(formData, "tradeCount"),
-      notes: optionalText(formData, "notes")
-    },
-    create: {
+  await prisma.tradingDay.create({
+    data: {
       userId: currentUser.id,
       accountId,
       tradeDate,
@@ -368,6 +394,51 @@ export async function createTradingDay(formData: FormData) {
       notes: optionalText(formData, "notes")
     }
   });
+
+  refresh();
+}
+
+async function assertOwnTradingDay(tradingDayId: string, userId: string) {
+  const tradingDay = await prisma.tradingDay.findFirst({
+    where: { id: tradingDayId, userId },
+    select: { id: true }
+  });
+
+  if (!tradingDay) {
+    throw new Error("Trade introuvable pour cet utilisateur.");
+  }
+}
+
+export async function updateTradingDay(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const tradingDayId = requiredText(formData, "tradingDayId");
+
+  await assertOwnTradingDay(tradingDayId, currentUser.id);
+
+  await prisma.tradingDay.update({
+    where: { id: tradingDayId },
+    data: {
+      tradeDate: requiredDate(formData, "tradeDate"),
+      profitLoss: requiredDecimal(formData, "profitLoss"),
+      tradeCount: optionalInt(formData, "tradeCount"),
+      notes: optionalText(formData, "notes")
+    }
+  });
+
+  refresh();
+}
+
+export async function deleteTradingDay(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const tradingDayId = requiredText(formData, "tradingDayId");
+  const confirmation = requiredText(formData, "confirmation");
+
+  if (confirmation !== "SUPPRIMER") {
+    throw new Error("Confirmation de suppression invalide.");
+  }
+
+  await assertOwnTradingDay(tradingDayId, currentUser.id);
+  await prisma.tradingDay.delete({ where: { id: tradingDayId } });
 
   refresh();
 }
@@ -456,21 +527,75 @@ export async function archiveAccount(formData: FormData) {
   refresh();
 }
 
-export async function deleteAccount(formData: FormData) {
+export async function closeAccount(formData: FormData) {
   const currentUser = await getCurrentUser();
   const accountId = requiredText(formData, "accountId");
-  const confirmationName = requiredText(formData, "confirmationName");
+  const closeStatus = requiredText(formData, "closeStatus");
+
+  if (closeStatus !== "FAILED" && closeStatus !== "PASSED" && closeStatus !== "CLOSED") {
+    throw new Error("Statut de fermeture invalide.");
+  }
+
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId: currentUser.id },
-    select: { id: true, name: true }
+    select: { accountType: true }
   });
 
   if (!account) {
     throw new Error("Compte introuvable pour cet utilisateur.");
   }
 
-  if (confirmationName !== account.name) {
-    throw new Error("Le nom retape ne correspond pas au compte.");
+  if (account.accountType === "EVALUATION" && closeStatus === "CLOSED") {
+    throw new Error("Une evaluation ne peut etre fermee qu'en PASSED ou FAILED.");
+  }
+
+  await prisma.account.update({
+    where: { id: accountId },
+    data: { status: closeStatus as AccountStatus }
+  });
+
+  refresh();
+}
+
+export async function updateAccountDetails(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const accountId = requiredText(formData, "accountId");
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id },
+    select: { id: true, accountType: true }
+  });
+
+  if (!account) {
+    throw new Error("Compte introuvable pour cet utilisateur.");
+  }
+
+  await prisma.account.update({
+    where: { id: account.id },
+    data: {
+      accountNumber: requiredText(formData, "accountNumber"),
+      purchaseDate: requiredDate(formData, "purchaseDate"),
+      activationDate: account.accountType === "FUNDED" ? requiredDate(formData, "activationDate") : optionalDate(formData, "activationDate")
+    }
+  });
+
+  refresh();
+}
+
+export async function deleteAccount(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const accountId = requiredText(formData, "accountId");
+  const confirmationNumber = requiredText(formData, "confirmationNumber");
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id },
+    select: { id: true, accountNumber: true }
+  });
+
+  if (!account) {
+    throw new Error("Compte introuvable pour cet utilisateur.");
+  }
+
+  if (confirmationNumber !== (account.accountNumber ?? "Sans numero")) {
+    throw new Error("Le numero retape ne correspond pas au compte.");
   }
 
   await prisma.account.delete({ where: { id: accountId } });
@@ -481,18 +606,32 @@ export async function validateEvaluation(formData: FormData) {
   const currentUser = await getCurrentUser();
   const accountId = requiredText(formData, "accountId");
   const account = await prisma.account.findFirst({
-    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION" },
-    include: { propFirmRule: true }
+    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION", status: "ACTIVE" },
+    include: { propFirmRule: true, ruleOverride: true, tradingDays: true }
   });
 
   if (!account) {
     throw new Error("Evaluation introuvable pour cet utilisateur.");
   }
 
-  const newAccountType = requiredText(formData, "accountType") as AccountType;
-  if (newAccountType !== "FUNDED") {
-    throw new Error("Le nouveau compte doit etre FUNDED.");
+  if (!account.propFirmRule) {
+    throw new Error("Regle introuvable pour cette evaluation.");
   }
+
+  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const eligibility = calculateEvaluationEligibility(
+    currentResultUsd,
+    evaluationDays(account.tradingDays, account.purchaseDate),
+    resolvedRule
+  );
+
+  if (!eligibility.isEligible) {
+    throw new Error(eligibility.reasons[0] ?? "L'evaluation ne respecte pas encore sa regle.");
+  }
+
+  const activationCost = resolvedRule?.defaultActivationPrice ?? null;
+  const activationDate = optionalDate(formData, "activationDate") ?? todayUtcDate();
 
   await prisma.$transaction([
     prisma.account.update({
@@ -505,18 +644,118 @@ export async function validateEvaluation(formData: FormData) {
         propFirmId: account.propFirmId,
         propFirmRuleId: account.propFirmRuleId,
         parentAccountId: account.id,
-        name: requiredText(formData, "name"),
-        accountNumber: optionalText(formData, "accountNumber"),
+        name: `${account.propFirmRule.name} funded`,
+        accountNumber: requiredText(formData, "accountNumber"),
         platform: account.platform,
         currency: account.currency,
-        accountType: newAccountType,
+        accountType: "FUNDED",
         accountSize: account.accountSize,
         status: "ACTIVE",
-        activationDate: optionalDate(formData, "activationDate"),
+        purchaseDate: activationDate,
+        purchasePrice: activationCost,
+        promoUsed: activationCost ? "Activation" : null,
+        activationDate,
         notes: optionalText(formData, "notes")
       }
     })
   ]);
+
+  refresh();
+}
+
+export async function resetEvaluation(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const accountId = requiredText(formData, "accountId");
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION", status: "ACTIVE" },
+    include: { propFirmRule: true, ruleOverride: true, tradingDays: true }
+  });
+
+  if (!account) {
+    throw new Error("Evaluation introuvable pour cet utilisateur.");
+  }
+
+  if (!account.propFirmRule) {
+    throw new Error("Regle introuvable pour cette evaluation.");
+  }
+
+  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const eligibility = calculateEvaluationEligibility(
+    currentResultUsd,
+    evaluationDays(account.tradingDays, account.purchaseDate),
+    resolvedRule
+  );
+
+  if (!eligibility.isFailed) {
+    throw new Error("L'evaluation ne respecte pas les conditions de reset.");
+  }
+
+  const resetCost = resolvedRule?.defaultResetPrice ?? null;
+  const accumulatedCost = Number(account.purchasePrice ?? 0) + (resetCost ?? 0);
+  const resetDate = todayUtcDate();
+  const transactions: Prisma.PrismaPromise<unknown>[] = [
+    prisma.account.update({
+      where: { id: account.id },
+      data: { status: "FAILED" as AccountStatus }
+    }),
+    prisma.account.create({
+      data: {
+        userId: currentUser.id,
+        propFirmId: account.propFirmId,
+        propFirmRuleId: account.propFirmRuleId,
+        parentAccountId: account.id,
+        name: `${account.propFirmRule.name} reset`,
+        accountNumber: requiredText(formData, "accountNumber"),
+        platform: account.platform,
+        currency: account.currency,
+        accountType: "EVALUATION" as AccountType,
+        accountSize: account.accountSize,
+        status: "ACTIVE" as AccountStatus,
+        purchaseDate: resetDate,
+        purchasePrice: accumulatedCost > 0 ? accumulatedCost : null,
+        promoUsed: resetCost ? "Reset" : null,
+        notes: optionalText(formData, "notes")
+      }
+    })
+  ];
+
+  await prisma.$transaction(transactions);
+  refresh();
+}
+
+export async function closeFailedEvaluation(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const accountId = requiredText(formData, "accountId");
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION", status: "ACTIVE" },
+    include: { propFirmRule: true, ruleOverride: true, tradingDays: true }
+  });
+
+  if (!account) {
+    throw new Error("Evaluation introuvable pour cet utilisateur.");
+  }
+
+  if (!account.propFirmRule) {
+    throw new Error("Regle introuvable pour cette evaluation.");
+  }
+
+  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const eligibility = calculateEvaluationEligibility(
+    currentResultUsd,
+    evaluationDays(account.tradingDays, account.purchaseDate),
+    resolvedRule
+  );
+
+  if (!eligibility.isFailed) {
+    throw new Error("L'evaluation ne respecte pas les conditions d'echec.");
+  }
+
+  await prisma.account.update({
+    where: { id: account.id },
+    data: { status: "FAILED" }
+  });
 
   refresh();
 }
@@ -536,6 +775,7 @@ export async function saveAccountRuleOverride(formData: FormData) {
       buffer: optionalDecimal(formData, "buffer"),
       payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
       minTradingDays: optionalInt(formData, "minTradingDays"),
+      minDailyProfit: optionalDecimal(formData, "minDailyProfit"),
       minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays"),
       minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
@@ -555,6 +795,7 @@ export async function saveAccountRuleOverride(formData: FormData) {
       buffer: optionalDecimal(formData, "buffer"),
       payoutBuffer: optionalDecimal(formData, "payoutBuffer"),
       minTradingDays: optionalInt(formData, "minTradingDays"),
+      minDailyProfit: optionalDecimal(formData, "minDailyProfit"),
       minPayoutTradingDays: optionalInt(formData, "minPayoutTradingDays"),
       minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),

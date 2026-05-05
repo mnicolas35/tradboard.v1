@@ -37,7 +37,7 @@ export function AccountTable({ accounts }: AccountTableProps) {
               {accounts.map((account) => (
                 <tr key={account.id}>
                   <td>
-                    <strong>{account.name}</strong>
+                    <strong>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</strong>
                     {account.propFirmRule ? (
                       <div className="muted">{account.propFirmRule.name}</div>
                     ) : null}

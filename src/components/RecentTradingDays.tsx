@@ -27,7 +27,9 @@ export function RecentTradingDays({ tradingDays }: RecentTradingDaysProps) {
             return (
               <article className="activity-item" key={day.id}>
                 <div className="activity-topline">
-                  <span className="activity-account">{day.account.name}</span>
+                  <span className="activity-account">
+                    {day.account.accountNumber ? `#${day.account.accountNumber}` : "Sans numero"}
+                  </span>
                   <span className={profitLoss < 0 ? "day-result negative" : "day-result"}>
                     {formatCurrency(profitLoss)}
                   </span>

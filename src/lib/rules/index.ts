@@ -10,6 +10,7 @@ type RuleSource = Pick<
   | "buffer"
   | "payoutBuffer"
   | "minTradingDays"
+  | "minDailyProfit"
   | "minTradingDaysForPayout"
   | "minPayoutTradingDays"
   | "minDailyProfitForPayout"
@@ -35,6 +36,7 @@ type OverrideSource = Pick<
   | "buffer"
   | "payoutBuffer"
   | "minTradingDays"
+  | "minDailyProfit"
   | "minPayoutTradingDays"
   | "minDailyProfitForPayout"
   | "consistencyPercent"
@@ -72,6 +74,7 @@ export type ResolvedAccountRule = {
   buffer: number | null;
   payoutBuffer: number | null;
   minTradingDays: number | null;
+  minDailyProfit: number | null;
   minPayoutTradingDays: number | null;
   minDailyProfitForPayout: number | null;
   consistencyPercent: number | null;
@@ -97,11 +100,12 @@ export function resolveAccountRule(rule: RuleSource | null, override: OverrideSo
     maxDrawdown: overrideNumber(override?.maxDrawdown, rule.maxDrawdown) ?? 0,
     dailyDrawdown: overrideNumber(override?.dailyDrawdown, rule.dailyDrawdown),
     buffer: overrideNumber(override?.buffer, rule.buffer),
-    payoutBuffer: overrideNumber(override?.payoutBuffer, rule.payoutBuffer ?? rule.buffer),
+    payoutBuffer: overrideNumber(override?.payoutBuffer, rule.payoutBuffer),
     minTradingDays: overrideValue(override?.minTradingDays, rule.minTradingDays),
+    minDailyProfit: overrideNumber(override?.minDailyProfit, rule.minDailyProfit),
     minPayoutTradingDays: overrideValue(
       override?.minPayoutTradingDays,
-      rule.minPayoutTradingDays ?? rule.minTradingDaysForPayout
+      rule.minTradingDaysForPayout ?? rule.minPayoutTradingDays
     ),
     minDailyProfitForPayout: overrideNumber(override?.minDailyProfitForPayout, rule.minDailyProfitForPayout),
     consistencyPercent: overrideNumber(override?.consistencyPercent, rule.consistencyPercent),

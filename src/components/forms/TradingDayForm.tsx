@@ -8,15 +8,27 @@ import { Field, SelectField, TextArea } from "./FormControls";
 
 type TradingDayFormProps = {
   accounts: AccountSummary[];
+  hideAccountSelect?: boolean;
   onCancel?: () => void;
   onSuccess?: () => void;
 };
 
-export function TradingDayForm({ accounts, onCancel, onSuccess }: TradingDayFormProps) {
+function todayInputValue() {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${today.getFullYear()}-${month}-${day}`;
+}
+
+export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, onSuccess }: TradingDayFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const options = accounts.map((account) => ({ id: account.id, label: account.name }));
+  const options = accounts.map((account) => ({
+    id: account.id,
+    label: account.accountNumber ? `#${account.accountNumber}` : "Sans numero"
+  }));
 
   return (
     <form
@@ -40,8 +52,12 @@ export function TradingDayForm({ accounts, onCancel, onSuccess }: TradingDayForm
         <h2>Ajouter un resultat journalier</h2>
       </div>
       <div className="form-grid">
-        <SelectField label="Compte actif" name="accountId" options={options} required />
-        <Field label="Date" name="tradeDate" required type="date" />
+        {hideAccountSelect && accounts[0] ? (
+          <input name="accountId" type="hidden" value={accounts[0].id} />
+        ) : (
+          <SelectField label="Compte actif" name="accountId" options={options} required />
+        )}
+        <Field label="Date" name="tradeDate" required type="date" defaultValue={todayInputValue()} />
         <Field label="Gain / perte USD" name="profitLoss" required type="number" />
         <Field label="Nombre de trades" name="tradeCount" type="number" />
         <TextArea label="Notes" name="notes" />

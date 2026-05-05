@@ -63,6 +63,7 @@ export type AppData = {
       consistencyPercent: number | null;
       fundedConsistencyPercent: number | null;
       minTradingDays: number | null;
+      minDailyProfit: number | null;
       minTradingDaysForPayout: number | null;
       minPayoutTradingDays: number | null;
       minDailyProfitForPayout: number | null;
@@ -90,10 +91,8 @@ export type AppData = {
 
 export type AccountSummary = {
   id: string;
-  name: string;
   accountNumber: string | null;
   parentAccountId: string | null;
-  parentAccountName: string | null;
   propFirmId: string;
   propFirmName: string;
   propFirmAcronym: string;
@@ -115,7 +114,9 @@ export type AccountSummary = {
     buffer: number | null;
     payoutBuffer: number | null;
     consistencyPercent: number | null;
+    fundedConsistencyPercent: number | null;
     minTradingDays: number | null;
+    minDailyProfit: number | null;
     minPayoutTradingDays: number | null;
     minDailyProfitForPayout: number | null;
     payoutRuleType: string;
@@ -123,11 +124,14 @@ export type AccountSummary = {
     defaultPurchasePrice: number | null;
     defaultActivationPrice: number | null;
     defaultResetPrice: number | null;
+    defaultFundedResetPrice: number | null;
     promoNote: string | null;
     source: string;
   } | null;
   currentResultUsd: number;
   currentResultEur: number | null;
+  accountBalanceUsd: number;
+  accountBalanceEur: number | null;
   payoutsPaidUsd: number;
   payoutsGrossUsd: number;
   payoutsNetUsd: number;
@@ -147,8 +151,20 @@ export type AccountSummary = {
     consistencyOk: boolean;
     reasons: string[];
   };
+  evaluationEligibility: {
+    isEligible: boolean;
+    isFailed: boolean;
+    targetReached: boolean;
+    drawdownOk: boolean;
+    dailyDrawdownOk: boolean;
+    validDays: number;
+    minTradingDays: number | null;
+    consistencyOk: boolean;
+    reasons: string[];
+  };
   tradedDaysCount: number;
   dailyResults: TradingDaySummary[];
+  tradeEntries: TradeEntrySummary[];
   expenses: MoneyEventSummary[];
   payouts: MoneyEventSummary[];
 };
@@ -156,11 +172,20 @@ export type AccountSummary = {
 export type TradingDaySummary = {
   id: string;
   accountId: string;
-  accountName: string;
   propFirmAcronym: string;
   accountSize: number;
   accountNumber: string | null;
   tradeDate: string;
+  profitLossUsd: number;
+  tradeCount: number | null;
+  notes: string | null;
+};
+
+export type TradeEntrySummary = {
+  id: string;
+  accountId: string;
+  tradeDate: string;
+  createdAtTime: string | null;
   profitLossUsd: number;
   tradeCount: number | null;
   notes: string | null;

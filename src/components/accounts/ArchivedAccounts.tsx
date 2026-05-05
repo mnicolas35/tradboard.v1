@@ -22,17 +22,17 @@ export function ArchivedAccounts({ accounts, onOpenAccount }: ArchivedAccountsPr
               <th>Compte</th>
               <th>Prop firm</th>
               <th>Type</th>
-              <th>Resultat</th>
+              <th>Solde</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {accounts.map((account) => (
               <tr key={account.id}>
-                <td>{account.name}</td>
+                <td>{account.accountNumber ? `#${account.accountNumber}` : "Sans numero"}</td>
                 <td>{account.propFirmAcronym}</td>
                 <td>{account.accountType}</td>
-                <td>{formatCurrency(account.currentResultUsd)}</td>
+                <td>{formatCurrency(account.accountBalanceUsd)}</td>
                 <td>
                   <button className="button secondary" type="button" onClick={() => onOpenAccount(`account:${account.id}`)}>
                     Ouvrir

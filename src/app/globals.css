@@ -163,6 +163,12 @@ h2 {
   color: #ffffff;
 }
 
+.button.positive {
+  background: var(--positive);
+  border-color: var(--positive);
+  color: #ffffff;
+}
+
 .app-layout {
   align-items: start;
   display: grid;
@@ -217,7 +223,7 @@ h2 {
 }
 
 .accounts-list {
-  gap: 4px;
+  gap: 3px;
 }
 
 .sidebar-item {
@@ -274,20 +280,44 @@ h2 {
 }
 
 .account-nav-item {
-  gap: 2px;
-  min-height: 34px;
-  padding: 6px 9px;
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.account-nav-main {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+
+.account-nav-badge {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.account-nav-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-nav-item span {
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.15;
 }
 
 .account-nav-item small {
+  flex: 0 0 auto;
   font-size: 0.72rem;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .sidebar-item:hover,
@@ -585,6 +615,167 @@ tr:last-child td {
   font-size: 1.6rem;
 }
 
+.account-detail-v2 {
+  display: grid;
+  gap: 18px;
+}
+
+.account-detail-hero {
+  align-items: stretch;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 22px;
+}
+
+.account-detail-hero h1 {
+  font-size: 1.55rem;
+}
+
+.account-detail-hero-side {
+  align-items: flex-end;
+  display: grid;
+  gap: 18px;
+  justify-items: end;
+}
+
+.account-info-panel {
+  display: grid;
+  gap: 0;
+  padding: 8px;
+}
+
+.account-info-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.account-info-row.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-info-row.payout-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.payout-field {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.payout-field.eligible {
+  background: var(--positive-bg);
+  border-color: color-mix(in srgb, var(--positive) 45%, var(--border));
+  color: var(--positive);
+}
+
+.payout-field.consistency-ok {
+  background: var(--positive-bg);
+  border-color: color-mix(in srgb, var(--positive) 45%, var(--border));
+}
+
+.payout-field.consistency-ok strong {
+  color: var(--positive);
+}
+
+.payout-field.consistency-bad {
+  background: var(--negative-bg);
+  border-color: color-mix(in srgb, var(--negative) 45%, var(--border));
+}
+
+.payout-field.consistency-bad strong {
+  color: var(--negative);
+}
+
+.payout-field small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.account-performance-panel {
+  display: grid;
+}
+
+.account-performance-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  padding: 16px;
+}
+
+.account-performance-chart,
+.account-calendar-card,
+.account-performance-empty {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.account-performance-chart {
+  display: grid;
+  gap: 12px;
+  min-height: 360px;
+  padding: 16px;
+}
+
+.account-performance-chart-head,
+.account-calendar-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.calendar-month-nav {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.account-performance-chart-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.account-performance-chart svg {
+  height: 100%;
+  min-height: 260px;
+  width: 100%;
+}
+
+.chart-zero {
+  stroke: var(--border);
+  stroke-dasharray: 6 6;
+}
+
+.chart-line {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.chart-point {
+  fill: var(--accent);
+}
+
+.account-performance-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 360px;
+}
+
+.account-calendar-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
 .button-row {
   align-items: center;
   display: flex;
@@ -623,6 +814,11 @@ tr:last-child td {
   border-color: var(--accent);
   box-shadow: var(--shadow);
   transform: translateY(-1px);
+}
+
+.icon-button.danger:hover {
+  border-color: var(--negative);
+  color: var(--negative);
 }
 
 .icon-button-mark {
@@ -771,6 +967,19 @@ tr:last-child td {
   gap: 3px;
 }
 
+.calendar-cell-button {
+  border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.calendar-cell-button:hover,
+.calendar-cell-button.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
 .calendar-cell span {
   font-size: 0.76rem;
   overflow-wrap: anywhere;
@@ -784,6 +993,48 @@ tr:last-child td {
 .calendar-cell.negative {
   background: var(--negative-bg);
   color: var(--negative);
+}
+
+.trade-day-detail {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.trade-day-detail-header,
+.trade-entry-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.trade-day-detail-header h3 {
+  font-size: 0.96rem;
+}
+
+.trade-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.trade-entry-row {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.trade-entry-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.trade-entry-row p {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .global-calendar-cell {
@@ -1032,7 +1283,7 @@ tr:last-child td {
 
 .sidebar-account-group {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar-account-group-title {
@@ -1045,13 +1296,66 @@ tr:last-child td {
   font-size: 0.7rem;
   font-weight: 900;
   justify-content: space-between;
-  padding: 8px 9px 2px;
+  padding: 7px 7px 1px;
   text-align: left;
   text-transform: uppercase;
 }
 
 .sidebar-account-group-title:hover {
   color: var(--text);
+}
+
+.sidebar-account-group-title.static-title {
+  cursor: default;
+  padding-top: 5px;
+}
+
+.sidebar-account-group-title.static-title:hover {
+  color: var(--muted);
+}
+
+.sidebar-archive-entry {
+  min-height: 30px;
+  padding: 5px 7px;
+}
+
+.sidebar-archive-block {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.sidebar-archive-heading {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  justify-content: space-between;
+  padding: 0 7px;
+  text-transform: uppercase;
+}
+
+.sidebar-archive-heading:hover {
+  color: var(--text);
+}
+
+.sidebar-archive-heading strong {
+  color: var(--text);
+  font-size: 0.7rem;
+}
+
+.sidebar-archive-meta {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.sidebar-archive-group {
+  gap: 1px;
 }
 
 .form-panel {
@@ -1244,8 +1548,14 @@ textarea {
   }
 
   .content-grid,
-  .dashboard-main-grid {
+  .dashboard-main-grid,
+  .account-performance-layout {
     grid-template-columns: 1fr;
+  }
+
+  .account-info-row,
+  .account-info-row.payout-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .propfirm-row {
@@ -1256,6 +1566,7 @@ textarea {
 @media (max-width: 700px) {
   .top-bar,
   .detail-hero,
+  .account-detail-hero,
   .user-strip {
     align-items: flex-start;
     flex-direction: column;
@@ -1274,6 +1585,22 @@ textarea {
   .detail-grid,
   .kpi-row,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-detail-hero-side {
+    align-items: stretch;
+    justify-items: stretch;
+    width: 100%;
+  }
+
+  .account-detail-hero-side .button-row {
+    justify-content: flex-start;
+  }
+
+  .account-info-row,
+  .account-info-row.two,
+  .account-info-row.payout-row {
     grid-template-columns: 1fr;
   }
 

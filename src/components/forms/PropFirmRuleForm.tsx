@@ -82,7 +82,8 @@ export function PropFirmRuleForm({
         <Field label="Drawdown" name="maxDrawdown" required type="number" defaultValue={initialRule?.maxDrawdown} />
         <Field label="Coût du compte" name="defaultPurchasePrice" type="number" defaultValue={initialRule?.defaultPurchasePrice ?? undefined} />
         <Field label="Coût reset évaluation" name="defaultResetPrice" type="number" defaultValue={initialRule?.defaultResetPrice ?? undefined} />
-        <Field label="Coût reset funded (PA)" name="defaultFundedResetPrice" type="number" defaultValue={initialRule?.defaultFundedResetPrice ?? undefined} />
+        <Field label="Coût activation funded" name="defaultActivationPrice" type="number" defaultValue={initialRule?.defaultActivationPrice ?? undefined} />
+        <Field label="Coût reset funded" name="defaultFundedResetPrice" type="number" defaultValue={initialRule?.defaultFundedResetPrice ?? undefined} />
       </div>
       <div className="rule-section">
         <div className="rule-section-title">Évaluation</div>
@@ -99,6 +100,7 @@ export function PropFirmRuleForm({
           <Field label="Consistance" name="fundedConsistencyPercent" type="number" defaultValue={initialRule?.fundedConsistencyPercent ?? undefined} />
           <Field label="Jours de trade minimum" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
           <Field label="Montant minimum par jour" name="minDailyProfitForPayout" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
+          <Field label="Part trader" name="traderSharePercent" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
         </div>
       </div>
       <div className="form-grid">

@@ -1,4 +1,5 @@
 import { getLatestUsdEurRate, getMonthlyProfitLossEur, getTotalProfitLossEur } from "@/lib/currency";
+import { calculateEvaluationEligibility } from "@/lib/evaluation";
 import { calculatePayoutEligibility } from "@/lib/payout";
 import { prisma } from "@/lib/prisma";
 import { resolveAccountRule } from "@/lib/rules";
@@ -29,6 +30,73 @@ function dateString(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+function timeString(value: Date) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris"
+  }).format(value);
+}
+
+function summarizeTradingDaysByDate(
+  days: Array<{
+    id: string;
+    accountId: string;
+    tradeDate: Date;
+    profitLoss: unknown;
+    tradeCount: number | null;
+    notes: string | null;
+  }>,
+  account: {
+    name: string;
+    propFirm: { acronym: string };
+    accountSize: unknown;
+    accountNumber: string | null;
+  }
+): TradingDaySummary[] {
+  const byDate = new Map<string, TradingDaySummary>();
+
+  for (const day of days) {
+    const tradeDate = dateString(day.tradeDate);
+    const current = byDate.get(tradeDate);
+
+    if (current) {
+      byDate.set(tradeDate, {
+        ...current,
+        profitLossUsd: current.profitLossUsd + Number(day.profitLoss),
+        tradeCount:
+          current.tradeCount === null && day.tradeCount === null
+            ? null
+            : (current.tradeCount ?? 0) + (day.tradeCount ?? 0),
+        notes: current.notes ?? day.notes
+      });
+    } else {
+      byDate.set(tradeDate, {
+        id: `${day.accountId}-${tradeDate}`,
+        accountId: day.accountId,
+        propFirmAcronym: account.propFirm.acronym,
+        accountSize: Number(account.accountSize),
+        accountNumber: account.accountNumber,
+        tradeDate,
+        profitLossUsd: Number(day.profitLoss),
+        tradeCount: day.tradeCount,
+        notes: day.notes
+      });
+    }
+  }
+
+  return [...byDate.values()].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
+}
+
+function tradingDaysFrom(days: TradingDaySummary[], startDate: Date | null) {
+  if (!startDate) {
+    return days;
+  }
+
+  const start = dateString(startDate);
+  return days.filter((day) => day.tradeDate >= start);
+}
+
 export async function getDashboardData(): Promise<AppData> {
   const currentUser = await getCurrentUser();
   const ownedWhere = { userId: currentUser.id };
@@ -42,7 +110,7 @@ export async function getDashboardData(): Promise<AppData> {
           propFirmRule: true,
           parentAccount: true,
           ruleOverride: true,
-          tradingDays: { orderBy: { tradeDate: "desc" } },
+          tradingDays: { orderBy: [{ tradeDate: "desc" }, { createdAt: "desc" }] },
           expenses: true,
           payouts: true
         },
@@ -104,7 +172,6 @@ export async function getDashboardData(): Promise<AppData> {
   const mapTradingDay = (day: (typeof tradingDays)[number]): TradingDaySummary => ({
     id: day.id,
     accountId: day.accountId,
-    accountName: day.account.name,
     propFirmAcronym: day.account.propFirm.acronym,
     accountSize: Number(day.account.accountSize),
     accountNumber: day.account.accountNumber,
@@ -116,13 +183,23 @@ export async function getDashboardData(): Promise<AppData> {
 
   const accountSummaries: AccountSummary[] = accounts.map((account) => {
     const currentResultUsd = getTotalProfitLossUsd(account.tradingDays);
+    const accountSizeUsd = Number(account.accountSize);
+    const accountBalanceUsd = accountSizeUsd + currentResultUsd;
     const payoutsPaidUsd = getTotalPayoutsUsd(account.payouts);
     const expensesUsd = getTotalExpensesUsd(account.expenses);
     const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+    const dailyResults = summarizeTradingDaysByDate(account.tradingDays, account);
+    const evaluationDayResults = tradingDaysFrom(dailyResults, account.purchaseDate).map((day) => ({
+      profitLossUsd: day.profitLossUsd
+    }));
+    const payoutDayResults = tradingDaysFrom(dailyResults, account.activationDate).map((day) => ({
+      profitLossUsd: day.profitLossUsd
+    }));
+    const evaluationEligibility = calculateEvaluationEligibility(currentResultUsd, evaluationDayResults, resolvedRule);
     const payoutEligibility = calculatePayoutEligibility(
       currentResultUsd,
-      account.tradingDays.map((day) => ({ profitLossUsd: Number(day.profitLoss) })),
-      resolvedRule
+      payoutDayResults,
+      account.accountType === "FUNDED" ? resolvedRule : null
     );
     const split = (resolvedRule?.traderSharePercent ?? 100) / 100;
     const payoutsGrossUsd = payoutsPaidUsd;
@@ -132,10 +209,8 @@ export async function getDashboardData(): Promise<AppData> {
 
     return {
       id: account.id,
-      name: account.name,
       accountNumber: account.accountNumber,
       parentAccountId: account.parentAccountId,
-      parentAccountName: account.parentAccount?.name ?? null,
       propFirmId: account.propFirmId,
       propFirmName: account.propFirm.name,
       propFirmAcronym: account.propFirm.acronym,
@@ -143,7 +218,7 @@ export async function getDashboardData(): Promise<AppData> {
       platform: account.platform,
       currency: account.currency,
       accountType: account.accountType,
-      accountSize: Number(account.accountSize),
+      accountSize: accountSizeUsd,
       status: account.status,
       purchaseDate: dateOrNull(account.purchaseDate),
       purchasePrice: numberOrNull(account.purchasePrice),
@@ -153,6 +228,8 @@ export async function getDashboardData(): Promise<AppData> {
       rule: resolvedRule,
       currentResultUsd,
       currentResultEur: getTotalProfitLossEur(currentResultUsd, usdEurRateValue),
+      accountBalanceUsd,
+      accountBalanceEur: getTotalProfitLossEur(accountBalanceUsd, usdEurRateValue),
       payoutsPaidUsd,
       payoutsGrossUsd,
       payoutsNetUsd,
@@ -161,15 +238,14 @@ export async function getDashboardData(): Promise<AppData> {
       netResultEur: getTotalProfitLossEur(accountNetResultUsd, usdEurRateValue),
       roiPercent: capitalCost > 0 ? (accountNetResultUsd / capitalCost) * 100 : null,
       payoutEligibility,
-      tradedDaysCount: account.tradingDays.length,
-      dailyResults: account.tradingDays.map((day) => ({
+      evaluationEligibility,
+      tradedDaysCount: dailyResults.length,
+      dailyResults,
+      tradeEntries: account.tradingDays.map((day) => ({
         id: day.id,
         accountId: day.accountId,
-        accountName: account.name,
-        propFirmAcronym: account.propFirm.acronym,
-        accountSize: Number(account.accountSize),
-        accountNumber: account.accountNumber,
         tradeDate: dateString(day.tradeDate),
+        createdAtTime: timeString(day.createdAt),
         profitLossUsd: Number(day.profitLoss),
         tradeCount: day.tradeCount,
         notes: day.notes
@@ -258,6 +334,7 @@ export async function getDashboardData(): Promise<AppData> {
       consistencyPercent: numberOrNull(rule.consistencyPercent),
       fundedConsistencyPercent: numberOrNull(rule.fundedConsistencyPercent),
       minTradingDays: rule.minTradingDays,
+      minDailyProfit: numberOrNull(rule.minDailyProfit),
       minTradingDaysForPayout: rule.minTradingDaysForPayout,
       minPayoutTradingDays: rule.minPayoutTradingDays,
       minDailyProfitForPayout: numberOrNull(rule.minDailyProfitForPayout),

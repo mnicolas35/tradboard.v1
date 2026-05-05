@@ -39,8 +39,27 @@ function monthCells(reference = new Date()) {
 
 export function GlobalPerformanceCalendar({ days }: GlobalPerformanceCalendarProps) {
   const byDate = new Map<string, TradingDaySummary[]>();
+  const byDateAndAccount = new Map<string, TradingDaySummary>();
 
   for (const day of days) {
+    const key = `${day.tradeDate}:${day.accountId}`;
+    const current = byDateAndAccount.get(key);
+
+    if (current) {
+      byDateAndAccount.set(key, {
+        ...current,
+        profitLossUsd: current.profitLossUsd + day.profitLossUsd,
+        tradeCount:
+          current.tradeCount === null && day.tradeCount === null
+            ? null
+            : (current.tradeCount ?? 0) + (day.tradeCount ?? 0)
+      });
+    } else {
+      byDateAndAccount.set(key, day);
+    }
+  }
+
+  for (const day of byDateAndAccount.values()) {
     byDate.set(day.tradeDate, [...(byDate.get(day.tradeDate) ?? []), day]);
   }
 
@@ -65,7 +84,7 @@ export function GlobalPerformanceCalendar({ days }: GlobalPerformanceCalendarPro
               <div className="global-calendar-events">
                 {entries.map((entry) => (
                   <span key={entry.id}>
-                    {entry.propFirmAcronym} {compactSize(entry.accountSize)} {entry.accountNumber ? `#${entry.accountNumber}` : entry.accountName}{" "}
+                    {entry.propFirmAcronym} {compactSize(entry.accountSize)} {entry.accountNumber ? `#${entry.accountNumber}` : "Sans numero"}{" "}
                     {formatCurrency(entry.profitLossUsd)}
                   </span>
                 ))}

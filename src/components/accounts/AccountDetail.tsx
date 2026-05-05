@@ -1,58 +1,160 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AccountPerformanceCalendar } from "@/components/accounts/AccountPerformanceCalendar";
-import { ExpenseForm } from "@/components/forms/ExpenseForm";
-import { PayoutForm } from "@/components/forms/PayoutForm";
 import { TradingDayForm } from "@/components/forms/TradingDayForm";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/format";
 import {
-  archiveAccount,
+  closeAccount,
+  closeFailedEvaluation,
   deleteAccount,
-  saveAccountRuleOverride,
+  resetEvaluation,
+  updateAccountDetails,
   validateEvaluation
 } from "@/server/actions/tradboard-actions";
-import type { AccountSummary } from "@/types";
+import type { AccountSummary, TradingDaySummary } from "@/types";
 
 type AccountDetailProps = {
   account: AccountSummary;
 };
 
-function pct(value: number) {
-  return `${Math.max(0, Math.min(100, value)).toFixed(0)}%`;
-}
+type DetailModal = "activation" | "delete" | "failed" | "reset" | "settings" | "trade" | "close" | null;
 
-function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
+function DetailField({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: string | number | null | undefined;
+  tone?: "positive" | "negative";
+}) {
+  const toneClass = tone ? ` tone-${tone}` : "";
+
   return (
     <div className="detail-field">
       <span>{label}</span>
-      <strong>{value ?? "-"}</strong>
+      <strong className={toneClass}>{value ?? "-"}</strong>
+    </div>
+  );
+}
+
+function cumulativeBalancePoints(days: TradingDaySummary[], accountSize: number) {
+  const sorted = [...days].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+  let total = accountSize;
+
+  return sorted.map((day) => {
+    total += day.profitLossUsd;
+    return { date: day.tradeDate, value: total };
+  });
+}
+
+function todayDateValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tradingDaysFrom(days: TradingDaySummary[], startDate: string | null) {
+  if (!startDate) {
+    return days;
+  }
+
+  return days.filter((day) => day.tradeDate >= startDate);
+}
+
+function consistencySnapshot(account: AccountSummary, days: TradingDaySummary[]) {
+  const rulePercent =
+    account.accountType === "FUNDED" ? account.rule?.fundedConsistencyPercent ?? null : account.rule?.consistencyPercent ?? null;
+  const bestDay = Math.max(0, ...days.map((day) => day.profitLossUsd));
+  const currentRatio = account.currentResultUsd > 0 ? (bestDay / account.currentResultUsd) * 100 : null;
+  const missingProfit =
+    rulePercent && rulePercent > 0 ? Math.max(0, bestDay / (rulePercent / 100) - account.currentResultUsd) : null;
+
+  return {
+    rulePercent,
+    currentRatio,
+    missingProfit,
+    isOk: rulePercent === null || (currentRatio !== null && currentRatio <= rulePercent)
+  };
+}
+
+function PerformanceChart({ accountSize, days }: { accountSize: number; days: TradingDaySummary[] }) {
+  const points = useMemo(() => cumulativeBalancePoints(days, accountSize), [accountSize, days]);
+
+  if (points.length === 0) {
+    return (
+      <div className="account-performance-empty">
+        <span>Aucun trade.</span>
+      </div>
+    );
+  }
+
+  const values = points.map((point) => point.value);
+  const min = Math.min(accountSize, ...values);
+  const max = Math.max(accountSize, ...values);
+  const range = max - min || 1;
+  const width = 640;
+  const height = 260;
+  const padding = 24;
+  const plotWidth = width - padding * 2;
+  const plotHeight = height - padding * 2;
+  const coordinates = points.map((point, index) => {
+    const x = padding + (points.length === 1 ? plotWidth : (index / (points.length - 1)) * plotWidth);
+    const y = padding + ((max - point.value) / range) * plotHeight;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const startBalanceY = padding + ((max - accountSize) / range) * plotHeight;
+  const last = points[points.length - 1];
+
+  return (
+    <div className="account-performance-chart">
+      <div className="account-performance-chart-head">
+        <div>
+          <span className="muted">Solde du compte</span>
+          <strong className={last.value >= accountSize ? "tone-positive" : "tone-negative"}>{formatCurrency(last.value)}</strong>
+        </div>
+        <span className="muted">{points.length} jour(s)</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Graphique de performance du compte">
+        <line className="chart-zero" x1={padding} x2={width - padding} y1={startBalanceY} y2={startBalanceY} />
+        <polyline className="chart-line" fill="none" points={coordinates.join(" ")} />
+        {coordinates.map((coordinate, index) => {
+          const [x, y] = coordinate.split(",");
+          return <circle className="chart-point" cx={x} cy={y} key={`${points[index].date}-${index}`} r="4" />;
+        })}
+      </svg>
     </div>
   );
 }
 
 export function AccountDetail({ account }: AccountDetailProps) {
   const router = useRouter();
-  const [modal, setModal] = useState<"delete" | "validate" | "rules" | "trade" | "expense" | "payout" | null>(null);
+  const today = todayDateValue();
+  const accountNumberLabel = account.accountNumber ? `#${account.accountNumber}` : "Sans numero";
+  const [modal, setModal] = useState<DetailModal>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const target = account.rule?.target ?? 0;
-  const progress = target > 0 ? (account.currentResultUsd / target) * 100 : 0;
-  const canValidateEvaluation =
-    account.accountType === "EVALUATION" && account.status === "ACTIVE" && target > 0 && account.currentResultUsd >= target;
+  const isPositive = account.accountBalanceUsd >= account.accountSize;
+  const ruleDrawdown = account.rule?.maxDrawdown ?? null;
+  const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
+  const payoutValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.availableAmount) : "-";
+  const closeOptions = account.accountType === "EVALUATION" ? ["FAILED", "PASSED"] : ["FAILED", "PASSED", "CLOSED"];
+  const isActiveEvaluation = account.accountType === "EVALUATION" && account.status === "ACTIVE";
+  const canActivateEvaluation = isActiveEvaluation && account.evaluationEligibility.isEligible;
+  const canFailEvaluation = isActiveEvaluation && account.evaluationEligibility.isFailed;
+  const tradingDaysStartDate = account.accountType === "FUNDED" ? account.activationDate : account.purchaseDate;
+  const ruleTradingDays = tradingDaysFrom(account.dailyResults, tradingDaysStartDate);
+  const consistency = consistencySnapshot(account, ruleTradingDays);
 
-  async function submitAction(action: (formData: FormData) => Promise<void>, formData: FormData, close = true) {
+  async function submitAction(action: (formData: FormData) => Promise<void>, formData: FormData) {
     setError(null);
     setIsSubmitting(true);
 
     try {
       await action(formData);
       router.refresh();
-      if (close) {
-        setModal(null);
-      }
+      setModal(null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Action impossible.");
     } finally {
@@ -61,218 +163,147 @@ export function AccountDetail({ account }: AccountDetailProps) {
   }
 
   return (
-    <div className="stack">
-      <section className="panel detail-hero">
+    <div className="account-detail-v2">
+      <section className="panel account-detail-hero">
         <div>
           <p className="eyebrow">{account.propFirmName}</p>
-          <h1>{account.name}</h1>
-          <p className="muted">{account.notes ?? "Compte de trading suivi dans TradBoard."}</p>
+          <h1>{accountNumberLabel}</h1>
+          <p className="muted">{account.propFirmRuleName ?? "Aucune règle associée"}</p>
         </div>
-        <div className="detail-actions">
+        <div className="account-detail-hero-side">
           <div className="detail-result">
-            <span>Resultat actuel</span>
-            <strong className={account.currentResultUsd >= 0 ? "tone-positive" : "tone-negative"}>
-              {formatCurrency(account.currentResultUsd)}
-            </strong>
-            <small>
-              {account.currentResultEur === null
-                ? "EUR indisponible"
-                : `${formatCurrency(account.currentResultEur, "EUR")} estime`}
-            </small>
+            <span>Solde du compte</span>
+            <strong className={isPositive ? "tone-positive" : "tone-negative"}>{formatCurrency(account.accountBalanceUsd)}</strong>
           </div>
           <div className="button-row">
-            {canValidateEvaluation ? (
-              <button className="button" type="button" onClick={() => setModal("validate")}>
-                Valider l&apos;evaluation
+            {canActivateEvaluation ? (
+              <button className="button positive" type="button" onClick={() => setModal("activation")}>
+                Activation
               </button>
             ) : null}
-            <button className="button secondary" type="button" onClick={() => setModal("rules")}>
-              Edit regles
-            </button>
+            {canFailEvaluation ? (
+              <>
+                <button className="button secondary" type="button" onClick={() => setModal("reset")}>
+                  Reset
+                </button>
+                <button className="button danger" type="button" onClick={() => setModal("failed")}>
+                  Failed
+                </button>
+              </>
+            ) : null}
             <button className="button secondary" type="button" onClick={() => setModal("trade")}>
               Add trade
             </button>
-            <button className="button secondary" type="button" onClick={() => setModal("expense")}>
-              Add depense
+            <button className="button secondary" type="button" onClick={() => setModal("close")}>
+              Closed
             </button>
-            <button className="button secondary" type="button" onClick={() => setModal("payout")}>
-              Add payout
-            </button>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitAction(archiveAccount, new FormData(event.currentTarget), false);
-              }}
+            <button
+              aria-label="Modifier le compte"
+              className="icon-button"
+              title="Modifier le compte"
+              type="button"
+              onClick={() => setModal("settings")}
             >
-              <input name="accountId" type="hidden" value={account.id} />
-              <button className="button secondary" disabled={isSubmitting} type="submit">
-                Archiver
-              </button>
-            </form>
-            <button className="button danger" type="button" onClick={() => setModal("delete")}>
-              Supprimer
+              ⚙
+            </button>
+            <button
+              aria-label="Supprimer le compte"
+              className="icon-button danger"
+              title="Supprimer le compte"
+              type="button"
+              onClick={() => setModal("delete")}
+            >
+              🗑️
             </button>
           </div>
         </div>
       </section>
 
-      <section className="detail-grid">
-        <Field label="Numero" value={account.accountNumber} />
-        <Field label="Regle" value={account.propFirmRuleName} />
-        <Field label="Plateforme" value={account.platform} />
-        <Field label="Devise" value={account.currency} />
-        <Field label="Type" value={account.accountType} />
-        <Field label="Taille" value={formatCurrency(account.accountSize)} />
-        <Field label="Statut" value={account.status} />
-        <Field label="Date achat" value={account.purchaseDate} />
-        <Field label="Prix paye" value={account.purchasePrice ? formatCurrency(account.purchasePrice) : null} />
-        <Field label="Promo" value={account.promoUsed} />
-        <Field label="Activation" value={account.activationDate} />
-        <Field label="Target" value={target ? formatCurrency(target) : null} />
-        <Field label="Max drawdown" value={account.rule ? formatCurrency(account.rule.maxDrawdown) : null} />
-        <Field label="Daily drawdown" value={account.rule?.dailyDrawdown ? formatCurrency(account.rule.dailyDrawdown) : null} />
-        <Field label="Buffer" value={account.rule?.buffer ? formatCurrency(account.rule.buffer) : null} />
-        <Field label="Buffer payout" value={account.rule?.payoutBuffer ? formatCurrency(account.rule.payoutBuffer) : null} />
-        <Field label="Consistance" value={account.rule?.consistencyPercent ? `${account.rule.consistencyPercent}%` : null} />
-        <Field label="Part trader" value={account.rule?.traderSharePercent ? `${account.rule.traderSharePercent}%` : null} />
-        <Field label="Jours trades" value={account.tradedDaysCount} />
-        <Field label="Jours min eval" value={account.rule?.minTradingDays} />
-        <Field label="Jours min payout" value={account.rule?.minPayoutTradingDays} />
-        <Field label="Regle effective" value={account.rule?.source} />
+      <section className="panel account-info-panel">
+        <div className="account-info-row">
+          <DetailField label="Numéro compte" value={account.accountNumber ?? "Sans numero"} />
+          <DetailField label="Taille" value={formatCurrency(account.accountSize)} />
+          <DetailField label="Règle" value={account.propFirmRuleName} />
+          <DetailField label="Type" value={account.accountType} />
+          <DetailField label="Statut" value={account.status} />
+        </div>
+        <div className="account-info-row two">
+          <DetailField label="Solde" value={formatCurrency(account.accountBalanceUsd)} tone={isPositive ? "positive" : "negative"} />
+          <DetailField label="Drawdown règle" value={ruleDrawdown === null ? null : formatCurrency(ruleDrawdown)} />
+        </div>
+        <div className="account-info-row payout-row">
+          <div className={payoutEligible ? "detail-field payout-field eligible" : "detail-field payout-field"}>
+            <span>Payout possible</span>
+            <strong>{payoutValue}</strong>
+            {account.accountType === "FUNDED" && account.payoutEligibility.reasons.length > 0 ? (
+              <small>{account.payoutEligibility.reasons[0]}</small>
+            ) : null}
+          </div>
+          <div
+            className={
+              consistency.rulePercent === null
+                ? "detail-field payout-field"
+                : consistency.isOk
+                  ? "detail-field payout-field consistency-ok"
+                  : "detail-field payout-field consistency-bad"
+            }
+          >
+            <span>Consistance</span>
+            <strong>
+              {consistency.currentRatio === null ? "-" : `${consistency.currentRatio.toFixed(1)}%`}
+              {consistency.rulePercent !== null ? ` / ${consistency.rulePercent.toFixed(1)}%` : ""}
+            </strong>
+            {consistency.rulePercent !== null ? (
+              <small>Manquant: {formatCurrency(consistency.missingProfit ?? 0)}</small>
+            ) : (
+              <small>Aucune règle de consistance</small>
+            )}
+          </div>
+          <DetailField label="Jours tradés" value={ruleTradingDays.length} />
+        </div>
       </section>
 
-      <section className="panel progress-panel">
+      <section className="panel account-performance-panel">
         <div className="panel-header">
-          <h2>Progression et bilan</h2>
-          <span>{pct(progress)}</span>
+          <h2>Performance</h2>
+          <span className="muted">{account.tradedDaysCount} jour(s)</span>
         </div>
-        <div className="progress-track">
-          <div style={{ width: pct(progress) }} />
-        </div>
-        <div className="kpi-row">
-          <Field label="Payout brut disponible" value={formatCurrency(account.payoutEligibility.availableAmount)} />
-          <Field label="Payout net estime" value={formatCurrency(account.payoutEligibility.netAmount)} />
-          <Field label="Payouts bruts deja pris" value={formatCurrency(account.payoutsGrossUsd)} />
-          <Field label="Payouts nets deja pris" value={formatCurrency(account.payoutsNetUsd)} />
-          <Field label="Depenses liees" value={formatCurrency(account.expensesUsd)} />
-          <Field label="Bilan net" value={formatCurrency(account.netResultUsd)} />
-          <Field label="Bilan net EUR" value={account.netResultEur === null ? null : formatCurrency(account.netResultEur, "EUR")} />
-          <Field label="ROI" value={account.roiPercent === null ? null : `${account.roiPercent.toFixed(1)}%`} />
-        </div>
-        {account.payoutEligibility.reasons.length > 0 ? (
-          <div className="reason-list">
-            {account.payoutEligibility.reasons.map((reason) => (
-              <span key={reason}>{reason}</span>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <AccountPerformanceCalendar days={account.dailyResults} />
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>Resultats journaliers</h2>
-          <span className="muted">{account.dailyResults.length} jours</span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Resultat</th>
-                <th>Trades</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {account.dailyResults.map((day) => (
-                <tr key={day.id}>
-                  <td>{day.tradeDate}</td>
-                  <td className={day.profitLossUsd >= 0 ? "tone-positive" : "tone-negative"}>
-                    {formatCurrency(day.profitLossUsd)}
-                  </td>
-                  <td>{day.tradeCount ?? "-"}</td>
-                  <td>{day.notes ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="account-performance-layout">
+          <PerformanceChart accountSize={account.accountSize} days={account.dailyResults} />
+          <AccountPerformanceCalendar days={account.dailyResults} trades={account.tradeEntries} />
         </div>
       </section>
 
-      <section className="content-grid">
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Depenses</h2>
-            <span className="muted">{account.expenses.length} lignes</span>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Montant</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {account.expenses.map((expense) => (
-                  <tr key={expense.id}>
-                    <td>{expense.date}</td>
-                    <td>{expense.type ?? "-"}</td>
-                    <td>{formatCurrency(expense.amount, expense.currency)}</td>
-                    <td>{expense.notes ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Payouts</h2>
-            <span className="muted">{account.payouts.length} lignes</span>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Statut</th>
-                  <th>Brut</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {account.payouts.map((payout) => (
-                  <tr key={payout.id}>
-                    <td>{payout.date}</td>
-                    <td>{payout.status ?? "-"}</td>
-                    <td>{formatCurrency(payout.amount, payout.currency)}</td>
-                    <td>{payout.notes ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </section>
+      <Modal isOpen={modal === "trade"} title="Add trading day" onClose={() => setModal(null)}>
+        <TradingDayForm accounts={[account]} hideAccountSelect onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
+      </Modal>
 
-      <Modal isOpen={modal === "delete"} title="Supprimer le compte" onClose={() => setModal(null)}>
+      <Modal isOpen={modal === "settings"} title="Modifier le compte" onClose={() => setModal(null)}>
         <form
           className="form-panel"
           onSubmit={(event) => {
             event.preventDefault();
-            void submitAction(deleteAccount, new FormData(event.currentTarget));
+            void submitAction(updateAccountDetails, new FormData(event.currentTarget));
           }}
         >
           <div className="form-grid">
             <input name="accountId" type="hidden" value={account.id} />
-            <label className="form-field wide">
-              <span>Retaper le nom du compte</span>
-              <input name="confirmationName" required placeholder={account.name} />
+            <label className="form-field">
+              <span>Numéro du compte</span>
+              <input defaultValue={account.accountNumber ?? ""} name="accountNumber" placeholder="APX-001" required />
+            </label>
+            <label className="form-field">
+              <span>Date de création</span>
+              <input defaultValue={account.purchaseDate ?? today} name="purchaseDate" required type="date" />
+            </label>
+            <label className="form-field">
+              <span>Date activation</span>
+              <input
+                defaultValue={account.activationDate ?? (account.accountType === "FUNDED" ? today : "")}
+                name="activationDate"
+                required={account.accountType === "FUNDED"}
+                type="date"
+              />
             </label>
           </div>
           {error ? <p className="form-error">{error}</p> : null}
@@ -280,14 +311,14 @@ export function AccountDetail({ account }: AccountDetailProps) {
             <button className="button secondary" type="button" onClick={() => setModal(null)}>
               Annuler
             </button>
-            <button className="button danger" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Suppression..." : "Supprimer definitivement"}
+            <button className="button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "Enregistrement..." : "Enregistrer"}
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "validate"} title="Valider l'evaluation" onClose={() => setModal(null)}>
+      <Modal isOpen={modal === "activation"} title="Activation funded" onClose={() => setModal(null)}>
         <form
           className="form-panel"
           onSubmit={(event) => {
@@ -298,18 +329,43 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <div className="form-grid">
             <input name="accountId" type="hidden" value={account.id} />
             <label className="form-field">
-              <span>Nom nouveau compte</span>
-              <input name="name" required />
+              <span>Numéro du compte funded</span>
+              <input name="accountNumber" placeholder={account.accountNumber ?? "FD-001"} required />
             </label>
-            <label className="form-field">
-              <span>Numero</span>
-              <input name="accountNumber" />
-            </label>
-            <input name="accountType" type="hidden" value="FUNDED" />
-            <Field label="Type nouveau compte" value="FUNDED" />
             <label className="form-field">
               <span>Date activation</span>
-              <input name="activationDate" type="date" />
+              <input defaultValue={today} name="activationDate" type="date" />
+            </label>
+            <label className="form-field wide">
+              <span>Notes</span>
+              <textarea name="notes" rows={3} />
+            </label>
+          </div>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="form-actions split">
+            <button className="button secondary" type="button" onClick={() => setModal(null)}>
+              Annuler
+            </button>
+            <button className="button positive" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "Activation..." : "Activer"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={modal === "reset"} title="Reset evaluation" onClose={() => setModal(null)}>
+        <form
+          className="form-panel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAction(resetEvaluation, new FormData(event.currentTarget));
+          }}
+        >
+          <div className="form-grid">
+            <input name="accountId" type="hidden" value={account.id} />
+            <label className="form-field">
+              <span>Numéro du nouveau compte</span>
+              <input name="accountNumber" placeholder={account.accountNumber ?? "RESET-001"} required />
             </label>
             <label className="form-field wide">
               <span>Notes</span>
@@ -322,41 +378,52 @@ export function AccountDetail({ account }: AccountDetailProps) {
               Annuler
             </button>
             <button className="button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Validation..." : "Valider"}
+              {isSubmitting ? "Reset..." : "Reset"}
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "rules"} title="Edit regles compte" onClose={() => setModal(null)}>
+      <Modal isOpen={modal === "failed"} title="Marquer failed" onClose={() => setModal(null)}>
         <form
           className="form-panel"
           onSubmit={(event) => {
             event.preventDefault();
-            void submitAction(saveAccountRuleOverride, new FormData(event.currentTarget));
+            void submitAction(closeFailedEvaluation, new FormData(event.currentTarget));
           }}
         >
           <div className="form-grid">
             <input name="accountId" type="hidden" value={account.id} />
-            <label className="form-field"><span>Target</span><input name="target" type="number" defaultValue={account.rule?.target ?? ""} /></label>
-            <label className="form-field"><span>Max drawdown</span><input name="maxDrawdown" type="number" defaultValue={account.rule?.maxDrawdown ?? ""} /></label>
-            <label className="form-field"><span>Daily drawdown</span><input name="dailyDrawdown" type="number" defaultValue={account.rule?.dailyDrawdown ?? ""} /></label>
-            <label className="form-field"><span>Buffer</span><input name="buffer" type="number" defaultValue={account.rule?.buffer ?? ""} /></label>
-            <label className="form-field"><span>Buffer payout</span><input name="payoutBuffer" type="number" defaultValue={account.rule?.payoutBuffer ?? ""} /></label>
-            <label className="form-field"><span>Jours min payout</span><input name="minPayoutTradingDays" type="number" defaultValue={account.rule?.minPayoutTradingDays ?? ""} /></label>
-            <label className="form-field"><span>Profit min jour</span><input name="minDailyProfitForPayout" type="number" defaultValue={account.rule?.minDailyProfitForPayout ?? ""} /></label>
-            <label className="form-field"><span>Consistance %</span><input name="consistencyPercent" type="number" defaultValue={account.rule?.consistencyPercent ?? ""} /></label>
-            <label className="form-field"><span>Part trader %</span><input name="traderSharePercent" type="number" defaultValue={account.rule?.traderSharePercent ?? ""} /></label>
-            <label className="form-field">
-              <span>Type regle payout</span>
-              <select name="payoutRuleType" defaultValue={account.rule?.payoutRuleType ?? "NONE"}>
-                <option value="NONE">NONE</option>
-                <option value="BUFFER_ONLY">BUFFER_ONLY</option>
-                <option value="APEX">APEX</option>
-                <option value="TAKE_PROFIT_TRADER">TAKE_PROFIT_TRADER</option>
-                <option value="CUSTOM">CUSTOM</option>
-              </select>
-            </label>
+            <p className="form-note wide">Cette evaluation sera classee en failed.</p>
+          </div>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="form-actions split">
+            <button className="button secondary" type="button" onClick={() => setModal(null)}>
+              Annuler
+            </button>
+            <button className="button danger" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "Classement..." : "Failed"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={modal === "close"} title="Fermer le compte" onClose={() => setModal(null)}>
+        <form
+          className="form-panel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAction(closeAccount, new FormData(event.currentTarget));
+          }}
+        >
+          <div className="form-grid">
+            <input name="accountId" type="hidden" value={account.id} />
+            {closeOptions.map((status) => (
+              <label className="check-field" key={status}>
+                <input name="closeStatus" required type="radio" value={status} />
+                <span>{status}</span>
+              </label>
+            ))}
           </div>
           {error ? <p className="form-error">{error}</p> : null}
           <div className="form-actions split">
@@ -364,22 +431,37 @@ export function AccountDetail({ account }: AccountDetailProps) {
               Annuler
             </button>
             <button className="button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Sauvegarde..." : "Sauvegarder"}
+              {isSubmitting ? "Fermeture..." : "Fermer"}
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "trade"} title="Add trading day" onClose={() => setModal(null)}>
-        <TradingDayForm accounts={[account]} onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
-      </Modal>
-
-      <Modal isOpen={modal === "expense"} title="Add expense/reset" onClose={() => setModal(null)}>
-        <ExpenseForm accounts={[account]} onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
-      </Modal>
-
-      <Modal isOpen={modal === "payout"} title="Add payout" onClose={() => setModal(null)}>
-        <PayoutForm accounts={[account]} onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
+      <Modal isOpen={modal === "delete"} title="Supprimer le compte" onClose={() => setModal(null)}>
+        <form
+          className="form-panel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAction(deleteAccount, new FormData(event.currentTarget));
+          }}
+        >
+          <div className="form-grid">
+            <input name="accountId" type="hidden" value={account.id} />
+            <label className="form-field wide">
+              <span>Retaper le numéro du compte</span>
+              <input name="confirmationNumber" placeholder={account.accountNumber ?? "Sans numero"} required />
+            </label>
+          </div>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="form-actions split">
+            <button className="button secondary" type="button" onClick={() => setModal(null)}>
+              Annuler
+            </button>
+            <button className="button danger" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "Suppression..." : "Supprimer définitivement"}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

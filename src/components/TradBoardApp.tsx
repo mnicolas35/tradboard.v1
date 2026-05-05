@@ -106,6 +106,7 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
       <div className="app-layout">
         <Sidebar
           accounts={data.activeAccounts}
+          archivedAccounts={data.accounts}
           propFirmOrders={data.propFirmOrders}
           currentView={view}
           onChangeView={setView}
