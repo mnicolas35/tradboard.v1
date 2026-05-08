@@ -1,21 +1,80 @@
+import "server-only";
+
+import { createHmac, timingSafeEqual } from "crypto";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
-const MOCK_USER_EMAIL = "admin@tradboard.local";
+const SESSION_COOKIE = "tradboard_session";
+const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
 
-export async function getCurrentUser() {
-  const existingUser = await prisma.user.findFirst({
-    where: { email: MOCK_USER_EMAIL, isActive: true }
+function sessionSecret() {
+  return process.env.AUTH_SECRET ?? process.env.DATABASE_URL ?? "tradboard-local-session-secret";
+}
+
+function signSession(userId: string, expiresAt: number) {
+  return createHmac("sha256", sessionSecret()).update(`${userId}.${expiresAt}`).digest("base64url");
+}
+
+function verifySignature(userId: string, expiresAt: string, signature: string) {
+  const expected = signSession(userId, Number(expiresAt));
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+
+  return expectedBuffer.length === signatureBuffer.length && timingSafeEqual(expectedBuffer, signatureBuffer);
+}
+
+export async function createSession(userId: string) {
+  const expiresAt = Date.now() + SESSION_DURATION_MS;
+  const signature = signSession(userId, expiresAt);
+
+  cookies().set(SESSION_COOKIE, `${userId}.${expiresAt}.${signature}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(expiresAt)
   });
+}
 
-  if (existingUser) {
-    return existingUser;
+export async function destroySession() {
+  cookies().delete(SESSION_COOKIE);
+}
+
+export async function getOptionalCurrentUser() {
+  const session = cookies().get(SESSION_COOKIE)?.value;
+
+  if (!session) {
+    return null;
   }
 
-  return prisma.user.create({
-    data: {
-      email: MOCK_USER_EMAIL,
-      name: "Admin TradBoard",
-      role: "ADMIN"
-    }
+  const [userId, expiresAt, signature] = session.split(".");
+  if (!userId || !expiresAt || !signature || Number(expiresAt) < Date.now()) {
+    await destroySession();
+    return null;
+  }
+
+  if (!verifySignature(userId, expiresAt, signature)) {
+    await destroySession();
+    return null;
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, isActive: true }
   });
+
+  if (!user) {
+    await destroySession();
+  }
+
+  return user;
+}
+
+export async function getCurrentUser() {
+  const user = await getOptionalCurrentUser();
+
+  if (!user) {
+    throw new Error("Utilisateur non connecte.");
+  }
+
+  return user;
 }

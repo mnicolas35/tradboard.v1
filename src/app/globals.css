@@ -655,6 +655,10 @@ tr:last-child td {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.account-info-row.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .account-info-row.payout-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -701,9 +705,10 @@ tr:last-child td {
 .account-performance-layout {
   align-items: stretch;
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  padding: 16px;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 18px;
+  width: 100%;
 }
 
 .account-performance-chart,
@@ -712,13 +717,14 @@ tr:last-child td {
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 8px;
+  width: 100%;
 }
 
 .account-performance-chart {
   display: grid;
   gap: 12px;
-  min-height: 360px;
-  padding: 16px;
+  min-height: 430px;
+  padding: 18px;
 }
 
 .account-performance-chart-head,
@@ -742,7 +748,7 @@ tr:last-child td {
 
 .account-performance-chart svg {
   height: 100%;
-  min-height: 260px;
+  min-height: 330px;
   width: 100%;
 }
 
@@ -767,13 +773,13 @@ tr:last-child td {
   color: var(--muted);
   display: flex;
   justify-content: center;
-  min-height: 360px;
+  min-height: 430px;
 }
 
 .account-calendar-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 18px;
+  padding: 18px;
 }
 
 .button-row {
@@ -995,12 +1001,41 @@ tr:last-child td {
   color: var(--negative);
 }
 
+.account-calendar-card .calendar-grid {
+  gap: 8px;
+  padding: 0;
+}
+
+.account-calendar-card .calendar-cell {
+  min-height: 96px;
+  padding: 12px;
+}
+
+.account-calendar-card .calendar-weekday {
+  min-height: 30px;
+  padding: 8px 10px;
+}
+
+.account-calendar-card .calendar-cell {
+  align-content: start;
+  gap: 8px;
+}
+
+.account-calendar-card .calendar-cell strong {
+  font-size: 1.08rem;
+}
+
+.account-calendar-card .calendar-cell span {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
 .trade-day-detail {
   border-top: 1px solid var(--border);
   display: grid;
-  gap: 12px;
-  margin-top: 14px;
-  padding-top: 14px;
+  gap: 14px;
+  margin-top: 2px;
+  padding-top: 18px;
 }
 
 .trade-day-detail-header,
@@ -1017,7 +1052,8 @@ tr:last-child td {
 
 .trade-entry-list {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .trade-entry-row {
@@ -1414,6 +1450,16 @@ textarea {
   width: auto;
 }
 
+.inline-admin-form,
+.compact-check {
+  display: inline-flex;
+}
+
+.compact-check {
+  grid-column: auto;
+  margin: 0;
+}
+
 .form-note {
   padding: 16px 18px 0;
 }
@@ -1527,6 +1573,15 @@ textarea {
   width: 100%;
 }
 
+.login-panel .flush-header {
+  border-bottom: 0;
+  padding: 0;
+}
+
+.login-panel .form-error {
+  margin: 0;
+}
+
 .wide-button {
   width: 100%;
 }
@@ -1602,6 +1657,40 @@ textarea {
   .account-info-row.two,
   .account-info-row.payout-row {
     grid-template-columns: 1fr;
+  }
+
+  .account-performance-layout {
+    padding: 12px;
+  }
+
+  .account-performance-chart,
+  .account-performance-empty {
+    min-height: 320px;
+  }
+
+  .account-performance-chart svg {
+    min-height: 230px;
+  }
+
+  .account-calendar-card {
+    padding: 12px;
+  }
+
+  .account-calendar-card .calendar-grid {
+    gap: 4px;
+  }
+
+  .account-calendar-card .calendar-cell {
+    min-height: 68px;
+    padding: 7px;
+  }
+
+  .account-calendar-card .calendar-cell strong {
+    font-size: 0.92rem;
+  }
+
+  .account-calendar-card .calendar-cell span {
+    font-size: 0.72rem;
   }
 
   .propfirm-row,

@@ -137,6 +137,8 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isPositive = account.accountBalanceUsd >= account.accountSize;
   const ruleDrawdown = account.rule?.maxDrawdown ?? null;
+  const ruleTarget = account.rule?.target ?? null;
+  const targetValue = ruleTarget === null ? null : `${formatCurrency(account.currentResultUsd)} / ${formatCurrency(ruleTarget)}`;
   const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
   const payoutValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.availableAmount) : "-";
   const closeOptions = account.accountType === "EVALUATION" ? ["FAILED", "PASSED"] : ["FAILED", "PASSED", "CLOSED"];
@@ -227,8 +229,15 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <DetailField label="Type" value={account.accountType} />
           <DetailField label="Statut" value={account.status} />
         </div>
-        <div className="account-info-row two">
+        <div className={account.accountType === "EVALUATION" ? "account-info-row three" : "account-info-row two"}>
           <DetailField label="Solde" value={formatCurrency(account.accountBalanceUsd)} tone={isPositive ? "positive" : "negative"} />
+          {account.accountType === "EVALUATION" ? (
+            <DetailField
+              label="Target"
+              value={targetValue}
+              tone={account.currentResultUsd >= (ruleTarget ?? Number.POSITIVE_INFINITY) ? "positive" : account.currentResultUsd < 0 ? "negative" : undefined}
+            />
+          ) : null}
           <DetailField label="Drawdown règle" value={ruleDrawdown === null ? null : formatCurrency(ruleDrawdown)} />
         </div>
         <div className="account-info-row payout-row">

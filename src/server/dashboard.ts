@@ -101,7 +101,7 @@ export async function getDashboardData(): Promise<AppData> {
   const currentUser = await getCurrentUser();
   const ownedWhere = { userId: currentUser.id };
 
-  const [accounts, tradingDays, expenses, payouts, propFirms, propFirmRules, exchangeRates, propFirmOrders] =
+  const [accounts, tradingDays, expenses, payouts, propFirms, propFirmRules, exchangeRates, propFirmOrders, users] =
     await Promise.all([
       prisma.account.findMany({
         where: ownedWhere,
@@ -157,7 +157,21 @@ export async function getDashboardData(): Promise<AppData> {
       }),
       prisma.userPropFirmOrder.findMany({
         where: { userId: currentUser.id }
-      })
+      }),
+      currentUser.role === "ADMIN"
+        ? prisma.user.findMany({
+            where: { isActive: true },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              createdAt: true,
+              lastLoginAt: true
+            },
+            orderBy: { createdAt: "desc" }
+          })
+        : Promise.resolve([])
     ]);
 
   const latestUsdEurRate = getLatestUsdEurRate(exchangeRates);
@@ -277,6 +291,14 @@ export async function getDashboardData(): Promise<AppData> {
       role: currentUser.role,
       themePreference: currentUser.themePreference
     },
+    users: users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: dateString(user.createdAt),
+      lastLoginAt: user.lastLoginAt ? dateString(user.lastLoginAt) : null
+    })),
     metrics: {
       activeAccountsCount: getActiveAccountsCount(accounts),
       totalProfitLossUsd,

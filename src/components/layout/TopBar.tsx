@@ -1,17 +1,17 @@
 "use client";
 
+import { logoutUser } from "@/server/actions/auth-actions";
+
 type TopBarProps = {
-  isAuthenticated: boolean;
   user?: {
     name: string;
     email: string;
     role: string;
   };
   onOpenSettings?: () => void;
-  onLogout?: () => void;
 };
 
-export function TopBar({ isAuthenticated, user, onOpenSettings, onLogout }: TopBarProps) {
+export function TopBar({ user, onOpenSettings }: TopBarProps) {
   return (
     <header className="top-bar">
       <div className="brand">
@@ -22,7 +22,7 @@ export function TopBar({ isAuthenticated, user, onOpenSettings, onLogout }: TopB
         </div>
       </div>
 
-      {isAuthenticated && user ? (
+      {user ? (
         <div className="user-strip">
           <div>
             <strong>{user.name}</strong>
@@ -31,9 +31,11 @@ export function TopBar({ isAuthenticated, user, onOpenSettings, onLogout }: TopB
           <button className="button secondary" type="button" onClick={onOpenSettings}>
             Parametres
           </button>
-          <button className="button secondary" type="button" onClick={onLogout}>
-            Deconnexion
-          </button>
+          <form action={logoutUser}>
+            <button className="button secondary" type="submit">
+              Deconnexion
+            </button>
+          </form>
         </div>
       ) : null}
     </header>

@@ -65,6 +65,9 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
   const selectedTrades = selectedDate ? tradesByDate.get(selectedDate) ?? [] : [];
   const selectedTotal = selectedDate ? byDate.get(selectedDate) ?? 0 : 0;
   const formatter = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
+  const selectedDateLabel = selectedDate
+    ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${selectedDate}T00:00:00.000Z`))
+    : null;
   const monthCells = useMemo(() => getMonthDays(visibleMonth), [visibleMonth]);
 
   function moveMonth(offset: number) {
@@ -132,7 +135,7 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
         <div className="trade-day-detail">
           <div className="trade-day-detail-header">
             <div>
-              <h3>{selectedDate}</h3>
+              <h3>Trades du {selectedDateLabel}</h3>
               <span className="muted">{selectedTrades.length} trade(s)</span>
             </div>
             <strong className={selectedTotal >= 0 ? "tone-positive" : "tone-negative"}>{formatCurrency(selectedTotal)}</strong>

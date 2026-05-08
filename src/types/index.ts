@@ -9,6 +9,7 @@ export type AppView =
   | "settings"
   | "archived-accounts"
   | "prop-firms"
+  | "user-management"
   | "prop-firm"
   | "prop-firm-rule"
   | "account"
@@ -32,6 +33,7 @@ export type AppData = {
     role: string;
     themePreference: "LIGHT" | "DARK";
   };
+  users: UserSummary[];
   metrics: {
     activeAccountsCount: number;
     totalProfitLossUsd: number;
@@ -87,6 +89,15 @@ export type AppData = {
   recentTradingDays: TradingDaySummary[];
   calendarTradingDays: TradingDaySummary[];
   exchangeRates: ExchangeRateSummary[];
+};
+
+export type UserSummary = {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "USER" | string;
+  createdAt: string;
+  lastLoginAt: string | null;
 };
 
 export type AccountSummary = {

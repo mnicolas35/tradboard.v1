@@ -8,6 +8,7 @@ type SidebarProps = {
   archivedAccounts: AccountSummary[];
   propFirmOrders: Record<string, number>;
   currentView: AppView;
+  isAdmin: boolean;
   onChangeView: (view: AppView) => void;
   onOpenAccount: () => void;
 };
@@ -113,7 +114,7 @@ function SidebarAccountButton({
   );
 }
 
-export function Sidebar({ accounts, archivedAccounts, propFirmOrders, currentView, onChangeView, onOpenAccount }: SidebarProps) {
+export function Sidebar({ accounts, archivedAccounts, propFirmOrders, currentView, isAdmin, onChangeView, onOpenAccount }: SidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedArchiveSections, setCollapsedArchiveSections] = useState<Set<string>>(
     () => new Set(["passed", "failed", "funded"])
@@ -261,6 +262,15 @@ export function Sidebar({ accounts, archivedAccounts, propFirmOrders, currentVie
         >
           <span>PropFirm</span>
         </button>
+        {isAdmin ? (
+          <button
+            className={currentView === "user-management" ? "sidebar-item active" : "sidebar-item"}
+            type="button"
+            onClick={() => onChangeView("user-management")}
+          >
+            <span>Gestion utilisateurs</span>
+          </button>
+        ) : null}
       </section>
     </aside>
   );

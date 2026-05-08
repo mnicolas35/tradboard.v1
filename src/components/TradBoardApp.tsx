@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AccountDetail } from "@/components/accounts/AccountDetail";
+import { UserManager } from "@/components/admin/UserManager";
 import { ArchivedAccounts } from "@/components/accounts/ArchivedAccounts";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { ExchangeRateForm } from "@/components/forms/ExchangeRateForm";
@@ -19,39 +20,10 @@ type TradBoardAppProps = {
   data: AppData;
 };
 
-function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  return (
-    <main className="login-page">
-      <TopBar isAuthenticated={false} />
-      <section className="login-panel">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            onLogin();
-          }}
-        >
-          <h1>Connexion TradBoard</h1>
-          <label className="form-field wide">
-            <span>Email / user</span>
-            <input defaultValue="admin@tradboard.local" name="email" required type="email" />
-          </label>
-          <label className="form-field wide">
-            <span>Password</span>
-            <input defaultValue="demo" name="password" required type="password" />
-          </label>
-          <button className="button wide-button" type="submit">
-            Connexion
-          </button>
-        </form>
-      </section>
-    </main>
-  );
-}
-
 export function TradBoardApp({ data }: TradBoardAppProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [view, setView] = useState<AppView>("dashboard");
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const isAdmin = data.currentUser.role === "ADMIN";
 
   const selectedAccount = useMemo(() => {
     if (!view.startsWith("account:")) {
@@ -61,10 +33,6 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
     return data.accounts.find((account) => account.id === view.split(":")[1]) ?? null;
   }, [data.accounts, view]);
 
-  if (!isAuthenticated) {
-    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
-  }
-
   let content = <DashboardOverview data={data} />;
 
   if (selectedAccount) {
@@ -72,14 +40,16 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
   } else if (view === "archived-accounts") {
     content = <ArchivedAccounts accounts={data.archivedAccounts} onOpenAccount={setView} />;
   } else if (view === "prop-firms") {
-      content = (
-        <PropFirmManager
-          propFirms={data.propFirmDetails}
-          propFirmRules={data.propFirmRules}
-          isAdmin={data.currentUser.role === "ADMIN"}
-          currentUserId={data.currentUser.id}
-        />
+    content = (
+      <PropFirmManager
+        propFirms={data.propFirmDetails}
+        propFirmRules={data.propFirmRules}
+        isAdmin={isAdmin}
+        currentUserId={data.currentUser.id}
+      />
     );
+  } else if (view === "user-management") {
+    content = isAdmin ? <UserManager users={data.users} currentUserId={data.currentUser.id} /> : <DashboardOverview data={data} />;
   } else if (view === "settings") {
     content = <UserSettings user={data.currentUser} />;
   } else if (view === "trading-day") {
@@ -95,19 +65,15 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
   return (
     <main className="app-shell" data-theme={data.currentUser.themePreference.toLowerCase()}>
       <TopBar
-        isAuthenticated
         user={data.currentUser}
         onOpenSettings={() => setView("settings")}
-        onLogout={() => {
-          setIsAuthenticated(false);
-          setView("dashboard");
-        }}
       />
       <div className="app-layout">
         <Sidebar
           accounts={data.activeAccounts}
           archivedAccounts={data.accounts}
           propFirmOrders={data.propFirmOrders}
+          isAdmin={isAdmin}
           currentView={view}
           onChangeView={setView}
           onOpenAccount={() => setAccountModalOpen(true)}
