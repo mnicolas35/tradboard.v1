@@ -59,6 +59,7 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
         )}
         <Field label="Date" name="tradeDate" required type="date" defaultValue={todayInputValue()} />
         <Field label="Gain / perte USD" name="profitLoss" required type="number" />
+        <Field label="Drawdown disponible (DD suiveur)" name="drawdownAtClose" type="number" />
         <Field label="Nombre de trades" name="tradeCount" type="number" />
         <TextArea label="Notes" name="notes" />
       </div>

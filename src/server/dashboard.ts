@@ -240,6 +240,9 @@ export async function getDashboardData(): Promise<AppData> {
       activationDate: dateOrNull(account.activationDate),
       notes: account.notes,
       rule: resolvedRule,
+      currentDrawdown: account.tradingDays.find((d) => d.drawdownAtClose !== null)?.drawdownAtClose
+        ? Number(account.tradingDays.find((d) => d.drawdownAtClose !== null)!.drawdownAtClose)
+        : null,
       currentResultUsd,
       currentResultEur: getTotalProfitLossEur(currentResultUsd, usdEurRateValue),
       accountBalanceUsd,
@@ -261,6 +264,7 @@ export async function getDashboardData(): Promise<AppData> {
         tradeDate: dateString(day.tradeDate),
         createdAtTime: timeString(day.createdAt),
         profitLossUsd: Number(day.profitLoss),
+        drawdownAtClose: day.drawdownAtClose !== null ? Number(day.drawdownAtClose) : null,
         tradeCount: day.tradeCount,
         notes: day.notes
       })),

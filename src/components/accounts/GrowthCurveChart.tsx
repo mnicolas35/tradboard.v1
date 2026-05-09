@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { formatCurrency } from "@/lib/format";
 
 const MONTHS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 
@@ -38,11 +39,40 @@ function smoothCurvePath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
+type DdPoint = { x: number; y: number; color: string };
+
+function buildDdSegments(pts: Array<DdPoint | null>): { path: string; color: string }[] {
+  const segments: { path: string; color: string }[] = [];
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    if (!p1 || !p2) continue;
+
+    const p0 = (i > 0 ? pts[i - 1] : null) ?? p1;
+    const p3 = (i + 2 < pts.length ? pts[i + 2] : null) ?? p2;
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    segments.push({
+      path: `M ${p1.x.toFixed(1)},${p1.y.toFixed(1)} C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`,
+      color: p1.color,
+    });
+  }
+
+  return segments;
+}
+
 export interface GrowthCurveChartProps {
   title?: string;
   period?: string;
   data: { date: string; value: number }[];
   referenceValue?: number;
+  drawdownRuleFloor?: number;
+  drawdownCurrentData?: Array<null | { value: number; color: string }>;
   status?: "success" | "failure" | "neutral";
   statusLabel?: string;
   colorCurve?: string;
@@ -57,6 +87,8 @@ export function GrowthCurveChart({
   period,
   data,
   referenceValue,
+  drawdownRuleFloor,
+  drawdownCurrentData,
   status = "neutral",
   statusLabel,
   colorCurve = "var(--accent)",
@@ -77,11 +109,17 @@ export function GrowthCurveChart({
 
     const dataValues = data.map((d) => d.value);
     const refValues = referenceValue !== undefined ? [referenceValue] : [];
-    const allValues = [...dataValues, ...refValues];
+    const ddValues = drawdownCurrentData
+      ? drawdownCurrentData.filter((d): d is { value: number; color: string } => d !== null).map((d) => d.value)
+      : [];
+    const allValues = [
+      ...dataValues,
+      ...refValues,
+      ...(drawdownRuleFloor !== undefined ? [drawdownRuleFloor] : []),
+      ...ddValues,
+    ];
 
-    if (allValues.length === 0) {
-      return null;
-    }
+    if (allValues.length === 0) return null;
 
     let minV = Math.min(...allValues);
     let maxV = Math.max(...allValues);
@@ -114,12 +152,24 @@ export function GrowthCurveChart({
     }).reverse();
 
     const refY = referenceValue !== undefined ? toY(referenceValue) : null;
+    const drawdownRuleY = drawdownRuleFloor !== undefined ? toY(drawdownRuleFloor) : null;
+
+    const ddPts: Array<DdPoint | null> = drawdownCurrentData
+      ? drawdownCurrentData.map((d, i) =>
+          d === null ? null : { x: toX(i), y: toY(d.value), color: d.color }
+        )
+      : [];
+    const ddSegments = buildDdSegments(ddPts);
+    const lastDdPt = [...ddPts].reverse().find(Boolean) ?? null;
 
     return {
       curvePath,
       fillPath,
       yTicks,
       refY,
+      drawdownRuleY,
+      ddSegments,
+      lastDdPt,
       SVG_W,
       SVG_H,
       PAD_LEFT,
@@ -127,7 +177,7 @@ export function GrowthCurveChart({
       PAD_TOP,
       PLOT_W,
     };
-  }, [data, referenceValue]);
+  }, [data, referenceValue, drawdownRuleFloor, drawdownCurrentData]);
 
   const badgeColor =
     colorBadge ??
@@ -138,7 +188,9 @@ export function GrowthCurveChart({
       <div className="growth-curve-header">
         <div className="growth-curve-title-block">
           <span className="growth-curve-title">{title}</span>
-          {period && <span className="growth-curve-period">{period}</span>}
+          {data.length > 0 && data[data.length - 1] !== undefined && (
+            <span className="growth-curve-period">{formatCurrency(data[data.length - 1]!.value)}</span>
+          )}
         </div>
         {statusLabel && (
           <span
@@ -189,15 +241,37 @@ export function GrowthCurveChart({
             </g>
           ))}
 
-          {chart.refY !== null && (
+          {chart.drawdownRuleY !== null && (
             <line
               x1={chart.PAD_LEFT}
               x2={chart.SVG_W - chart.PAD_RIGHT}
-              y1={chart.refY}
-              y2={chart.refY}
-              stroke={colorReference}
+              y1={chart.drawdownRuleY}
+              y2={chart.drawdownRuleY}
+              stroke="#6b7280"
               strokeWidth="1.5"
-              strokeDasharray="6 4"
+              strokeDasharray="5 5"
+              strokeOpacity="0.85"
+            />
+          )}
+
+          {chart.ddSegments.map((seg, i) => (
+            <path
+              key={i}
+              d={seg.path}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+
+          {chart.lastDdPt && (
+            <circle
+              cx={chart.lastDdPt.x}
+              cy={chart.lastDdPt.y}
+              r="3.5"
+              fill={chart.lastDdPt.color}
             />
           )}
 

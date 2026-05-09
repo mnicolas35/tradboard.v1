@@ -156,6 +156,42 @@ export function AccountDetail({ account }: AccountDetailProps) {
 
   const chartData = useMemo(() => cumulativeBalancePoints(account.dailyResults, account.accountSize), [account.dailyResults, account.accountSize]);
 
+  const drawdownRuleFloor = ruleDrawdown !== null ? account.accountSize - ruleDrawdown : undefined;
+
+  const drawdownCurrentData = useMemo(() => {
+    if (!ruleDrawdown) return undefined;
+
+    // Pour chaque date, on prend la saisie la plus récente (tradeEntries est trié desc)
+    const ddByDate = new Map<string, number>();
+    for (const entry of account.tradeEntries) {
+      if (entry.drawdownAtClose !== null && !ddByDate.has(entry.tradeDate)) {
+        ddByDate.set(entry.tradeDate, entry.drawdownAtClose);
+      }
+    }
+
+    const ruleFloor = account.accountSize - ruleDrawdown;
+    let lastDD: number | null = null;
+
+    return chartData.map((point) => {
+      const dd = ddByDate.get(point.date);
+      if (dd !== undefined) lastDD = dd;
+
+      // Avant la première saisie de drawdown, on part du drawdown règle complet
+      const effectiveDD = lastDD ?? ruleDrawdown;
+      const floor = point.value - effectiveDD;
+
+      let color: string;
+      if (effectiveDD < ruleDrawdown * 0.5) {
+        color = "#ef4444";                  // rouge : plus de 50% du DD consommé
+      } else if (floor >= ruleFloor) {
+        color = "#22c55e";                  // vert : floor au-dessus du floor règle
+      } else {
+        color = "#f97316";                  // orange : floor en-dessous du floor règle
+      }
+      return { value: floor, color };
+    });
+  }, [account.tradeEntries, ruleDrawdown, account.accountSize, chartData]);
+
   const chartPeriod = useMemo(() => {
     const startDate = tradingDaysStartDate;
     const dates = account.dailyResults.map((d) => d.tradeDate).sort();
@@ -265,7 +301,17 @@ export function AccountDetail({ account }: AccountDetailProps) {
               tone={account.currentResultUsd >= (ruleTarget ?? Number.POSITIVE_INFINITY) ? "positive" : account.currentResultUsd < 0 ? "negative" : undefined}
             />
           ) : null}
-          <DetailField label="Drawdown règle" value={ruleDrawdown === null ? null : formatCurrency(ruleDrawdown)} />
+          <DetailField
+            label="Drawdown"
+            value={`${account.currentDrawdown !== null ? formatCurrency(account.currentDrawdown) : "-"} / ${ruleDrawdown !== null ? formatCurrency(ruleDrawdown) : "-"}`}
+            tone={
+              account.currentDrawdown !== null && ruleDrawdown !== null
+                ? account.currentDrawdown < ruleDrawdown * 0.5
+                  ? "negative"
+                  : undefined
+                : undefined
+            }
+          />
         </div>
         <div className="account-info-row payout-row">
           <div className={payoutEligible ? "detail-field payout-field eligible" : "detail-field payout-field"}>
@@ -309,6 +355,8 @@ export function AccountDetail({ account }: AccountDetailProps) {
             data={chartData}
             period={chartPeriod}
             referenceValue={account.accountSize}
+            drawdownRuleFloor={drawdownRuleFloor}
+            drawdownCurrentData={drawdownCurrentData}
             status={chartStatus.status}
             statusLabel={chartStatus.label}
           />

@@ -31,7 +31,7 @@ export type AppData = {
     name: string;
     email: string;
     role: string;
-    themePreference: "LIGHT" | "DARK";
+    themePreference: string;
   };
   users: UserSummary[];
   metrics: {
@@ -141,6 +141,7 @@ export type AccountSummary = {
     promoNote: string | null;
     source: string;
   } | null;
+  currentDrawdown: number | null;
   currentResultUsd: number;
   currentResultEur: number | null;
   accountBalanceUsd: number;
@@ -200,6 +201,7 @@ export type TradeEntrySummary = {
   tradeDate: string;
   createdAtTime: string | null;
   profitLossUsd: number;
+  drawdownAtClose: number | null;
   tradeCount: number | null;
   notes: string | null;
 };

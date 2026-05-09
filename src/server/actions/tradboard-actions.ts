@@ -401,6 +401,7 @@ export async function createTradingDay(formData: FormData) {
       accountId,
       tradeDate,
       profitLoss,
+      drawdownAtClose: optionalDecimal(formData, "drawdownAtClose"),
       tradeCount: optionalInt(formData, "tradeCount"),
       notes: optionalText(formData, "notes")
     }
@@ -431,6 +432,7 @@ export async function updateTradingDay(formData: FormData) {
     data: {
       tradeDate: requiredDate(formData, "tradeDate"),
       profitLoss: requiredDecimal(formData, "profitLoss"),
+      drawdownAtClose: optionalDecimal(formData, "drawdownAtClose"),
       tradeCount: optionalInt(formData, "tradeCount"),
       notes: optionalText(formData, "notes")
     }

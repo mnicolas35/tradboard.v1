@@ -200,6 +200,10 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
                 <input defaultValue={editingTrade.profitLossUsd} name="profitLoss" required type="number" />
               </label>
               <label className="form-field">
+                <span>Drawdown disponible (DD suiveur)</span>
+                <input defaultValue={editingTrade.drawdownAtClose ?? ""} name="drawdownAtClose" type="number" step="any" />
+              </label>
+              <label className="form-field">
                 <span>Nombre de trades</span>
                 <input defaultValue={editingTrade.tradeCount ?? ""} name="tradeCount" type="number" />
               </label>
