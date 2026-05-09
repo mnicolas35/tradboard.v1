@@ -641,7 +641,7 @@ tr:last-child td {
 
 .account-info-panel {
   display: grid;
-  gap: 0;
+  gap: 8px;
   padding: 8px;
 }
 

@@ -67,7 +67,11 @@ function consistencySnapshot(account: AccountSummary, days: TradingDaySummary[])
   const rulePercent =
     account.accountType === "FUNDED" ? account.rule?.fundedConsistencyPercent ?? null : account.rule?.consistencyPercent ?? null;
   const bestDay = Math.max(0, ...days.map((day) => day.profitLossUsd));
-  const currentRatio = account.currentResultUsd > 0 ? (bestDay / account.currentResultUsd) * 100 : null;
+  const consistencyBase =
+    account.accountType !== "FUNDED" && account.rule?.target != null
+      ? account.rule.target
+      : account.currentResultUsd > 0 ? account.currentResultUsd : null;
+  const currentRatio = consistencyBase !== null ? (bestDay / consistencyBase) * 100 : null;
   const missingProfit =
     rulePercent && rulePercent > 0 ? Math.max(0, bestDay / (rulePercent / 100) - account.currentResultUsd) : null;
 

@@ -35,7 +35,8 @@ export function calculateEvaluationEligibility(
   const drawdownOk = maxDrawdown === null ? true : currentResultUsd > -maxDrawdown;
   const dailyDrawdownOk = dailyDrawdown === null ? true : days.every((day) => day.profitLossUsd > -dailyDrawdown);
   const minDaysOk = minTradingDays === null ? true : validDays >= minTradingDays;
-  const consistencyRatio = currentResultUsd > 0 ? bestDay / currentResultUsd : null;
+  const consistencyBase = target !== null ? target : currentResultUsd > 0 ? currentResultUsd : null;
+  const consistencyRatio = consistencyBase !== null ? bestDay / consistencyBase : null;
   const consistencyOk =
     consistencyPercent === null
       ? true
