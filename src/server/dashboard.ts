@@ -369,6 +369,8 @@ export async function getDashboardData(): Promise<AppData> {
       defaultFundedResetPrice: numberOrNull(rule.defaultFundedResetPrice),
       promoNote: rule.promoNote ?? rule.promo,
       notes: rule.notes,
+      evalDrawdownType: rule.evalDrawdownType,
+      fundedDrawdownType: rule.fundedDrawdownType,
       isStandard: rule.isStandard,
       isActive: rule.isActive,
       createdByUserId: rule.createdByUserId

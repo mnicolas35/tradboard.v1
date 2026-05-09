@@ -73,6 +73,24 @@ export function ActiveCheckbox({ defaultChecked = true }: { defaultChecked?: boo
   );
 }
 
+export function DrawdownTypeToggle({ name, defaultValue = "EOD" }: { name: string; defaultValue?: string }) {
+  return (
+    <div className="form-field">
+      <span>Type de drawdown</span>
+      <div className="drawdown-toggle">
+        <label className="drawdown-toggle-option">
+          <input type="radio" name={name} value="EOD" defaultChecked={defaultValue !== "INTRADAY"} />
+          <span>EOD</span>
+        </label>
+        <label className="drawdown-toggle-option">
+          <input type="radio" name={name} value="INTRADAY" defaultChecked={defaultValue === "INTRADAY"} />
+          <span>Intraday</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function SubmitButton({ label }: { label: string }) {
   return (
     <div className="form-actions">

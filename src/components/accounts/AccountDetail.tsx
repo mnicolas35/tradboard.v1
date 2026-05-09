@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountPerformanceCalendar } from "@/components/accounts/AccountPerformanceCalendar";
+import { GrowthCurveChart, formatMonthYear } from "@/components/accounts/GrowthCurveChart";
 import { TradingDayForm } from "@/components/forms/TradingDayForm";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/format";
@@ -153,6 +154,28 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const ruleTradingDays = tradingDaysFrom(account.dailyResults, tradingDaysStartDate);
   const consistency = consistencySnapshot(account, ruleTradingDays);
 
+  const chartData = useMemo(() => cumulativeBalancePoints(account.dailyResults, account.accountSize), [account.dailyResults, account.accountSize]);
+
+  const chartPeriod = useMemo(() => {
+    const startDate = tradingDaysStartDate;
+    const dates = account.dailyResults.map((d) => d.tradeDate).sort();
+    const endDate = dates[dates.length - 1] ?? today;
+    if (!startDate && dates.length === 0) return undefined;
+    const from = formatMonthYear(startDate ?? dates[0] ?? today);
+    const to = formatMonthYear(endDate);
+    return from === to ? from : `${from} → ${to}`;
+  }, [account.dailyResults, tradingDaysStartDate, today]);
+
+  const chartStatus = useMemo((): { status: "success" | "failure" | "neutral"; label: string | undefined } => {
+    if (account.accountType === "EVALUATION") {
+      if (account.status === "FAILED" || account.status === "CLOSED") return { status: "failure", label: "Challenge échoué" };
+      if (account.status === "PASSED") return { status: "success", label: "Challenge réussi" };
+      return { status: "neutral", label: "Challenge en cours" };
+    }
+    if (account.status === "CLOSED" || account.status === "ARCHIVED") return { status: "neutral", label: "Funded clôturé" };
+    return { status: "neutral", label: undefined };
+  }, [account.accountType, account.status]);
+
   async function submitAction(action: (formData: FormData) => Promise<void>, formData: FormData) {
     setError(null);
     setIsSubmitting(true);
@@ -282,7 +305,13 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <span className="muted">{account.tradedDaysCount} jour(s)</span>
         </div>
         <div className="account-performance-layout">
-          <PerformanceChart accountSize={account.accountSize} days={account.dailyResults} />
+          <GrowthCurveChart
+            data={chartData}
+            period={chartPeriod}
+            referenceValue={account.accountSize}
+            status={chartStatus.status}
+            statusLabel={chartStatus.label}
+          />
           <AccountPerformanceCalendar days={account.dailyResults} trades={account.tradeEntries} />
         </div>
       </section>

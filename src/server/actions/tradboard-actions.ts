@@ -9,7 +9,7 @@ import type {
   PayoutStatus,
   Prisma
 } from "@prisma/client";
-import type { PayoutRuleType, ThemePreference } from "@prisma/client";
+import type { DrawdownType, PayoutRuleType, ThemePreference } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { isSupportedCurrency } from "@/lib/currency";
 import { calculateEvaluationEligibility } from "@/lib/evaluation";
@@ -81,6 +81,11 @@ function optionalRuleType(formData: FormData): PayoutRuleType | null {
   const value = text(formData, "payoutRuleType");
   const values = ["NONE", "BUFFER_ONLY", "APEX", "TAKE_PROFIT_TRADER", "CUSTOM"];
   return values.includes(value) ? (value as PayoutRuleType) : null;
+}
+
+function drawdownType(formData: FormData, key: string): DrawdownType {
+  const value = formData.get(key);
+  return value === "INTRADAY" ? "INTRADAY" : "EOD";
 }
 
 function currency(formData: FormData, key: string): Currency {
@@ -227,6 +232,8 @@ export async function createPropFirmRule(formData: FormData) {
       promo: optionalText(formData, "promo"),
       promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
       notes: optionalText(formData, "notes"),
+      evalDrawdownType: drawdownType(formData, "evalDrawdownType"),
+      fundedDrawdownType: drawdownType(formData, "fundedDrawdownType"),
       isStandard,
       isActive: formData.get("isActive") === "on"
     }
@@ -270,8 +277,10 @@ export async function updatePropFirmRule(formData: FormData) {
     prisma.propFirmRule.update({
       where: { id },
       data: {
-        propFirmId,
-        createdByUserId: isStandard ? null : rule.createdByUserId ?? currentUser.id,
+        propFirm: { connect: { id: propFirmId } },
+        createdByUser: isStandard
+          ? { disconnect: true }
+          : { connect: { id: rule.createdByUserId ?? currentUser.id } },
         name: requiredText(formData, "name"),
         accountType: requiredText(formData, "accountType") as AccountType,
         accountSize: requiredDecimal(formData, "accountSize"),
@@ -297,6 +306,8 @@ export async function updatePropFirmRule(formData: FormData) {
         promo: optionalText(formData, "promo"),
         promoNote: optionalText(formData, "promoNote") ?? optionalText(formData, "promo"),
         notes: optionalText(formData, "notes"),
+        evalDrawdownType: drawdownType(formData, "evalDrawdownType"),
+        fundedDrawdownType: drawdownType(formData, "fundedDrawdownType"),
         isStandard,
         isActive: formData.get("isActive") === "on"
       }

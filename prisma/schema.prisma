@@ -57,6 +57,11 @@ enum PayoutStatus {
 enum ThemePreference {
   LIGHT
   DARK
+  NAVY
+  DARK_PRO
+  DARKY
+  GRISATRE
+  DESIGN_GRIS
 }
 
 enum PayoutRuleType {
@@ -65,6 +70,11 @@ enum PayoutRuleType {
   APEX
   TAKE_PROFIT_TRADER
   CUSTOM
+}
+
+enum DrawdownType {
+  EOD
+  INTRADAY
 }
 
 model User {
@@ -151,6 +161,8 @@ model PropFirmRule {
   promo                    String?
   promoNote                String?
   notes                    String?
+  evalDrawdownType         DrawdownType   @default(EOD)
+  fundedDrawdownType       DrawdownType   @default(EOD)
   isStandard               Boolean        @default(false)
   isActive                 Boolean        @default(true)
   createdAt                DateTime       @default(now())

@@ -776,6 +776,72 @@ tr:last-child td {
   min-height: 430px;
 }
 
+.growth-curve-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  width: 100%;
+}
+
+.growth-curve-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.growth-curve-title-block {
+  display: grid;
+  gap: 3px;
+}
+
+.growth-curve-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.growth-curve-period {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.growth-curve-badge {
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.growth-curve-svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.growth-curve-y-label {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: inherit;
+}
+
+.growth-curve-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.82rem;
+  justify-content: center;
+  min-height: 200px;
+}
+
 .account-calendar-card {
   display: grid;
   gap: 18px;
@@ -1448,6 +1514,42 @@ textarea {
 .check-field input {
   min-height: auto;
   width: auto;
+}
+
+.drawdown-toggle {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: inline-flex;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.drawdown-toggle-option {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0;
+}
+
+.drawdown-toggle-option input[type="radio"] {
+  display: none;
+}
+
+.drawdown-toggle-option span {
+  border-radius: 0;
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+
+.drawdown-toggle-option input[type="radio"]:checked + span {
+  background: var(--accent);
+  color: #fff;
 }
 
 .inline-admin-form,

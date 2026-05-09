@@ -78,6 +78,8 @@ export type AppData = {
       defaultFundedResetPrice: number | null;
       promoNote: string | null;
       notes: string | null;
+      evalDrawdownType: string;
+      fundedDrawdownType: string;
       isStandard: boolean;
       isActive: boolean;
       createdByUserId: string | null;

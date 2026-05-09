@@ -6,6 +6,7 @@ import { createPropFirmRule, updatePropFirmRule } from "@/server/actions/tradboa
 import type { AppData, SelectOption } from "@/types";
 import {
   ActiveCheckbox,
+  DrawdownTypeToggle,
   Field,
   SelectField
 } from "./FormControls";
@@ -91,6 +92,7 @@ export function PropFirmRuleForm({
           <Field label="Target" name="target" required type="number" defaultValue={initialRule?.target} />
           <Field label="Consistance" name="consistencyPercent" type="number" defaultValue={initialRule?.consistencyPercent ?? undefined} />
           <Field label="Nombre de jours de trade minimum" name="minTradingDays" type="number" defaultValue={initialRule?.minTradingDays ?? undefined} />
+          <DrawdownTypeToggle name="evalDrawdownType" defaultValue={initialRule?.evalDrawdownType ?? "EOD"} />
         </div>
       </div>
       <div className="rule-section">
@@ -101,6 +103,7 @@ export function PropFirmRuleForm({
           <Field label="Jours de trade minimum" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
           <Field label="Montant minimum par jour" name="minDailyProfitForPayout" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
           <Field label="Part trader" name="traderSharePercent" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
+          <DrawdownTypeToggle name="fundedDrawdownType" defaultValue={initialRule?.fundedDrawdownType ?? "EOD"} />
         </div>
       </div>
       <div className="form-grid">
