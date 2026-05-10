@@ -68,13 +68,16 @@ function consistencySnapshot(account: AccountSummary, days: TradingDaySummary[])
   const rulePercent =
     account.accountType === "FUNDED" ? account.rule?.fundedConsistencyPercent ?? null : account.rule?.consistencyPercent ?? null;
   const bestDay = Math.max(0, ...days.map((day) => day.profitLossUsd));
+  const currentResult = days.reduce((sum, day) => sum + day.profitLossUsd, 0);
+  const target = account.accountType !== "FUNDED" ? (account.rule?.target ?? null) : null;
+  // Si target définie : base = target tant qu'on ne la dépasse pas, total réel au-delà
   const consistencyBase =
-    account.accountType !== "FUNDED" && account.rule?.target != null
-      ? account.rule.target
-      : account.currentResultUsd > 0 ? account.currentResultUsd : null;
+    target !== null
+      ? Math.max(target, currentResult)
+      : currentResult > 0 ? currentResult : null;
   const currentRatio = consistencyBase !== null ? (bestDay / consistencyBase) * 100 : null;
   const missingProfit =
-    rulePercent && rulePercent > 0 ? Math.max(0, bestDay / (rulePercent / 100) - account.currentResultUsd) : null;
+    rulePercent && rulePercent > 0 ? Math.max(0, bestDay / (rulePercent / 100) - currentResult) : null;
 
   return {
     rulePercent,
@@ -156,57 +159,23 @@ export function AccountDetail({ account }: AccountDetailProps) {
 
   const chartData = useMemo(() => cumulativeBalancePoints(account.dailyResults, account.accountSize), [account.dailyResults, account.accountSize]);
 
-  const { drawdownRuleData, drawdownCurrentData } = useMemo(() => {
-    const empty = { drawdownRuleData: undefined, drawdownCurrentData: undefined };
-    if (!ruleDrawdown || chartData.length === 0) return empty;
+  const drawdownRuleData = useMemo((): number[] | undefined => {
+    if (!ruleDrawdown || chartData.length === 0) return undefined;
 
-    const isIntraday = account.drawdownType === "INTRADAY";
+    // Le floor est toujours trailing (EOD ou INTRADAY) : il suit le pic de solde.
+    // "EOD" signifie que le check se fait à la clôture, pas que le floor est fixe.
+    // Pour les funded avec buffer : le floor se fige à accountSize + buffer.
     const isFunded = account.accountType === "FUNDED";
-    // Pour funded en INTRADAY, le floor se fige à accountSize + buffer
-    const buffer = account.rule?.buffer ?? 0;
-    const floorCap = account.accountSize + buffer;
+    const buffer = account.rule?.buffer ?? null;
+    const floorCap = isFunded && buffer !== null ? account.accountSize + buffer : null;
 
-    // --- Courbe règle (grise) ---
     let peakBalance = account.accountSize;
-    const ruleFloorAtPoint: number[] = chartData.map((point) => {
-      if (isIntraday) {
-        if (point.value > peakBalance) peakBalance = point.value;
-        const floor = peakBalance - ruleDrawdown;
-        return isFunded ? Math.min(floor, floorCap) : floor;
-      }
-      return account.accountSize - ruleDrawdown; // EOD : fixe
+    return chartData.map((point) => {
+      if (point.value > peakBalance) peakBalance = point.value;
+      const floor = peakBalance - ruleDrawdown;
+      return floorCap !== null ? Math.min(floor, floorCap) : floor;
     });
-
-    // --- Courbe DD actuel (colorée) ---
-    const ddByDate = new Map<string, number>();
-    for (const entry of account.tradeEntries) {
-      if (entry.drawdownAtClose !== null && !ddByDate.has(entry.tradeDate)) {
-        ddByDate.set(entry.tradeDate, entry.drawdownAtClose);
-      }
-    }
-
-    let lastDD: number | null = null;
-    const currentData = chartData.map((point, idx) => {
-      const dd = ddByDate.get(point.date);
-      if (dd !== undefined) lastDD = dd;
-
-      const effectiveDD = lastDD ?? ruleDrawdown;
-      const floor = point.value - effectiveDD;
-      const ruleFloor = ruleFloorAtPoint[idx]!;
-
-      let color: string;
-      if (effectiveDD < ruleDrawdown * 0.5) {
-        color = "#ef4444"; // rouge : > 50% du DD consommé
-      } else if (floor >= ruleFloor) {
-        color = "#22c55e"; // vert : au-dessus du floor règle
-      } else {
-        color = "#f97316"; // orange : en-dessous du floor règle
-      }
-      return { value: floor, color };
-    });
-
-    return { drawdownRuleData: ruleFloorAtPoint, drawdownCurrentData: currentData };
-  }, [ruleDrawdown, chartData, account.drawdownType, account.accountSize, account.accountType, account.rule?.buffer, account.tradeEntries]);
+  }, [ruleDrawdown, chartData, account.accountSize, account.accountType, account.rule?.buffer]);
 
   const chartPeriod = useMemo(() => {
     const startDate = tradingDaysStartDate;
@@ -369,14 +338,19 @@ export function AccountDetail({ account }: AccountDetailProps) {
         <div className="account-performance-layout">
           <GrowthCurveChart
             data={chartData}
-            period={chartPeriod}
             referenceValue={account.accountSize}
             drawdownRuleData={drawdownRuleData}
-            drawdownCurrentData={drawdownCurrentData}
+            capitalInitial={account.accountSize}
+            maxDrawdown={ruleDrawdown ?? undefined}
+            bufferLevel={
+              account.accountType === "FUNDED" && (account.rule?.buffer ?? null) !== null
+                ? account.accountSize + account.rule!.buffer!
+                : undefined
+            }
             status={chartStatus.status}
             statusLabel={chartStatus.label}
           />
-          <AccountPerformanceCalendar days={account.dailyResults} trades={account.tradeEntries} />
+          <AccountPerformanceCalendar days={account.dailyResults} trades={account.tradeEntries} currentDrawdown={account.currentDrawdown} ruleDrawdown={account.rule?.maxDrawdown ?? null} />
         </div>
       </section>
 

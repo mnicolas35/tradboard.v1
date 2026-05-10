@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createTradingDay } from "@/server/actions/tradboard-actions";
 import type { AccountSummary } from "@/types";
-import { Field, SelectField, TextArea } from "./FormControls";
+import { Field, TextArea } from "./FormControls";
 
 type TradingDayFormProps = {
   accounts: AccountSummary[];
@@ -17,18 +17,49 @@ function todayInputValue() {
   const today = new Date();
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
-
   return `${today.getFullYear()}-${month}-${day}`;
+}
+
+function calcDrawdown(profitLoss: string, currentDrawdown: number | null, ruleDrawdown: number | null): string {
+  if (ruleDrawdown === null) return "";
+  const pl = parseFloat(profitLoss);
+  if (isNaN(pl)) return "";
+  const base = currentDrawdown ?? ruleDrawdown;
+  // Trailing DD: floor rises with gains, remaining stays ≈ ruleDrawdown
+  // Capped DD (post-buffer funded): floor is frozen, remaining grows with gains
+  const suggested = base >= ruleDrawdown ? ruleDrawdown : base + pl;
+  return String(Math.round(suggested * 100) / 100);
 }
 
 export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, onSuccess }: TradingDayFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
+  const [profitLossInput, setProfitLossInput] = useState("");
+  const [drawdownInput, setDrawdownInput] = useState("");
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
+  const currentDrawdown = selectedAccount?.currentDrawdown ?? null;
+  const ruleDrawdown = selectedAccount?.rule?.maxDrawdown ?? null;
+
   const options = accounts.map((account) => ({
     id: account.id,
     label: account.accountNumber ? `#${account.accountNumber}` : "Sans numero"
   }));
+
+  function handleAccountChange(id: string) {
+    setSelectedAccountId(id);
+    const account = accounts.find((a) => a.id === id);
+    const accCurrentDD = account?.currentDrawdown ?? null;
+    const accRuleDD = account?.rule?.maxDrawdown ?? null;
+    setDrawdownInput(calcDrawdown(profitLossInput, accCurrentDD, accRuleDD));
+  }
+
+  function handleProfitLossChange(value: string) {
+    setProfitLossInput(value);
+    setDrawdownInput(calcDrawdown(value, currentDrawdown, ruleDrawdown));
+  }
 
   return (
     <form
@@ -55,11 +86,48 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
         {hideAccountSelect && accounts[0] ? (
           <input name="accountId" type="hidden" value={accounts[0].id} />
         ) : (
-          <SelectField label="Compte actif" name="accountId" options={options} required />
+          <label className="form-field">
+            <span>Compte actif</span>
+            <select
+              name="accountId"
+              required
+              value={selectedAccountId}
+              onChange={(e) => handleAccountChange(e.target.value)}
+            >
+              <option value="">Selectionner</option>
+              {options.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </label>
         )}
         <Field label="Date" name="tradeDate" required type="date" defaultValue={todayInputValue()} />
-        <Field label="Gain / perte USD" name="profitLoss" required type="number" />
-        <Field label="Drawdown disponible (DD suiveur)" name="drawdownAtClose" type="number" />
+        <label className="form-field">
+          <span>Gain / perte USD</span>
+          <input
+            name="profitLoss"
+            required
+            type="number"
+            step="any"
+            value={profitLossInput}
+            onChange={(e) => handleProfitLossChange(e.target.value)}
+          />
+        </label>
+        <label className="form-field">
+          <span>
+            Drawdown disponible (DD suiveur)
+            {ruleDrawdown !== null ? (
+              <small className="muted"> — base {currentDrawdown === null ? "règle" : ""} : {currentDrawdown ?? ruleDrawdown}</small>
+            ) : null}
+          </span>
+          <input
+            name="drawdownAtClose"
+            type="number"
+            step="any"
+            value={drawdownInput}
+            onChange={(e) => setDrawdownInput(e.target.value)}
+          />
+        </label>
         <Field label="Nombre de trades" name="tradeCount" type="number" />
         <TextArea label="Notes" name="notes" />
       </div>

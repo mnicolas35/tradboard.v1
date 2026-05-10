@@ -10,6 +10,8 @@ import type { TradeEntrySummary, TradingDaySummary } from "@/types";
 type AccountPerformanceCalendarProps = {
   days: TradingDaySummary[];
   trades: TradeEntrySummary[];
+  currentDrawdown: number | null;
+  ruleDrawdown: number | null;
 };
 
 function getMonthDays(reference: Date) {
@@ -36,14 +38,26 @@ function getMonthDays(reference: Date) {
   return cells;
 }
 
-export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceCalendarProps) {
+function calcDrawdown(profitLoss: string, currentDrawdown: number | null, ruleDrawdown: number | null): string {
+  if (ruleDrawdown === null) return "";
+  const pl = parseFloat(profitLoss);
+  if (isNaN(pl)) return "";
+  const base = currentDrawdown ?? ruleDrawdown;
+  const suggested = base >= ruleDrawdown ? ruleDrawdown : base + pl;
+  return String(Math.round(suggested * 100) / 100);
+}
+
+export function AccountPerformanceCalendar({ days, trades, currentDrawdown, ruleDrawdown }: AccountPerformanceCalendarProps) {
   const router = useRouter();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingTrade, setEditingTrade] = useState<TradeEntrySummary | null>(null);
+  const [editProfitLoss, setEditProfitLoss] = useState("");
+  const [editDrawdown, setEditDrawdown] = useState("");
   const [deletingTrade, setDeletingTrade] = useState<TradeEntrySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const byDate = useMemo(() => {
     const totals = new Map<string, number>();
 
@@ -53,6 +67,7 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
 
     return totals;
   }, [days]);
+
   const tradesByDate = useMemo(() => {
     const grouped = new Map<string, TradeEntrySummary[]>();
 
@@ -62,6 +77,7 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
 
     return grouped;
   }, [trades]);
+
   const selectedTrades = selectedDate ? tradesByDate.get(selectedDate) ?? [] : [];
   const selectedTotal = selectedDate ? byDate.get(selectedDate) ?? 0 : 0;
   const formatter = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
@@ -72,6 +88,17 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
 
   function moveMonth(offset: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function openEditTrade(trade: TradeEntrySummary) {
+    setEditingTrade(trade);
+    setEditProfitLoss(String(trade.profitLossUsd));
+    setEditDrawdown(trade.drawdownAtClose !== null ? String(trade.drawdownAtClose) : "");
+  }
+
+  function handleEditProfitLossChange(value: string) {
+    setEditProfitLoss(value);
+    setEditDrawdown(calcDrawdown(value, currentDrawdown, ruleDrawdown));
   }
 
   async function submitTradeAction(action: (formData: FormData) => Promise<void>, formData: FormData) {
@@ -159,7 +186,7 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
                       className="row-icon-button edit"
                       title="Modifier le trade"
                       type="button"
-                      onClick={() => setEditingTrade(trade)}
+                      onClick={() => openEditTrade(trade)}
                     >
                       ⚙️
                     </button>
@@ -197,11 +224,29 @@ export function AccountPerformanceCalendar({ days, trades }: AccountPerformanceC
               </label>
               <label className="form-field">
                 <span>Gain / perte USD</span>
-                <input defaultValue={editingTrade.profitLossUsd} name="profitLoss" required type="number" />
+                <input
+                  name="profitLoss"
+                  required
+                  type="number"
+                  step="any"
+                  value={editProfitLoss}
+                  onChange={(e) => handleEditProfitLossChange(e.target.value)}
+                />
               </label>
               <label className="form-field">
-                <span>Drawdown disponible (DD suiveur)</span>
-                <input defaultValue={editingTrade.drawdownAtClose ?? ""} name="drawdownAtClose" type="number" step="any" />
+                <span>
+                  Drawdown disponible (DD suiveur)
+                  {ruleDrawdown !== null ? (
+                    <small className="muted"> — base {currentDrawdown === null ? "règle" : ""} : {currentDrawdown ?? ruleDrawdown}</small>
+                  ) : null}
+                </span>
+                <input
+                  name="drawdownAtClose"
+                  type="number"
+                  step="any"
+                  value={editDrawdown}
+                  onChange={(e) => setEditDrawdown(e.target.value)}
+                />
               </label>
               <label className="form-field">
                 <span>Nombre de trades</span>
