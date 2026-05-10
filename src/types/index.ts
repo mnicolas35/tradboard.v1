@@ -141,6 +141,7 @@ export type AccountSummary = {
     promoNote: string | null;
     source: string;
   } | null;
+  drawdownType: "EOD" | "INTRADAY";
   currentDrawdown: number | null;
   currentResultUsd: number;
   currentResultEur: number | null;

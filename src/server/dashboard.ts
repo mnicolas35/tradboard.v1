@@ -240,6 +240,9 @@ export async function getDashboardData(): Promise<AppData> {
       activationDate: dateOrNull(account.activationDate),
       notes: account.notes,
       rule: resolvedRule,
+      drawdownType: account.accountType === "FUNDED"
+        ? (account.propFirmRule?.fundedDrawdownType ?? "EOD")
+        : (account.propFirmRule?.evalDrawdownType ?? "EOD"),
       currentDrawdown: account.tradingDays.find((d) => d.drawdownAtClose !== null)?.drawdownAtClose
         ? Number(account.tradingDays.find((d) => d.drawdownAtClose !== null)!.drawdownAtClose)
         : null,

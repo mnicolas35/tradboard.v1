@@ -71,7 +71,7 @@ export interface GrowthCurveChartProps {
   period?: string;
   data: { date: string; value: number }[];
   referenceValue?: number;
-  drawdownRuleFloor?: number;
+  drawdownRuleData?: number[];
   drawdownCurrentData?: Array<null | { value: number; color: string }>;
   status?: "success" | "failure" | "neutral";
   statusLabel?: string;
@@ -87,7 +87,7 @@ export function GrowthCurveChart({
   period,
   data,
   referenceValue,
-  drawdownRuleFloor,
+  drawdownRuleData,
   drawdownCurrentData,
   status = "neutral",
   statusLabel,
@@ -112,10 +112,11 @@ export function GrowthCurveChart({
     const ddValues = drawdownCurrentData
       ? drawdownCurrentData.filter((d): d is { value: number; color: string } => d !== null).map((d) => d.value)
       : [];
+    const ruleValues = drawdownRuleData ?? [];
     const allValues = [
       ...dataValues,
       ...refValues,
-      ...(drawdownRuleFloor !== undefined ? [drawdownRuleFloor] : []),
+      ...ruleValues,
       ...ddValues,
     ];
 
@@ -152,7 +153,11 @@ export function GrowthCurveChart({
     }).reverse();
 
     const refY = referenceValue !== undefined ? toY(referenceValue) : null;
-    const drawdownRuleY = drawdownRuleFloor !== undefined ? toY(drawdownRuleFloor) : null;
+
+    const drawdownRulePts = drawdownRuleData
+      ? drawdownRuleData.map((v, i) => ({ x: toX(i), y: toY(v) }))
+      : [];
+    const drawdownRulePath = smoothCurvePath(drawdownRulePts);
 
     const ddPts: Array<DdPoint | null> = drawdownCurrentData
       ? drawdownCurrentData.map((d, i) =>
@@ -167,7 +172,7 @@ export function GrowthCurveChart({
       fillPath,
       yTicks,
       refY,
-      drawdownRuleY,
+      drawdownRulePath,
       ddSegments,
       lastDdPt,
       SVG_W,
@@ -177,7 +182,7 @@ export function GrowthCurveChart({
       PAD_TOP,
       PLOT_W,
     };
-  }, [data, referenceValue, drawdownRuleFloor, drawdownCurrentData]);
+  }, [data, referenceValue, drawdownRuleData, drawdownCurrentData]);
 
   const badgeColor =
     colorBadge ??
@@ -241,16 +246,16 @@ export function GrowthCurveChart({
             </g>
           ))}
 
-          {chart.drawdownRuleY !== null && (
-            <line
-              x1={chart.PAD_LEFT}
-              x2={chart.SVG_W - chart.PAD_RIGHT}
-              y1={chart.drawdownRuleY}
-              y2={chart.drawdownRuleY}
+          {chart.drawdownRulePath && (
+            <path
+              d={chart.drawdownRulePath}
+              fill="none"
               stroke="#6b7280"
               strokeWidth="1.5"
               strokeDasharray="5 5"
               strokeOpacity="0.85"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           )}
 

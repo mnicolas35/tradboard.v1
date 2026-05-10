@@ -156,12 +156,28 @@ export function AccountDetail({ account }: AccountDetailProps) {
 
   const chartData = useMemo(() => cumulativeBalancePoints(account.dailyResults, account.accountSize), [account.dailyResults, account.accountSize]);
 
-  const drawdownRuleFloor = ruleDrawdown !== null ? account.accountSize - ruleDrawdown : undefined;
+  const { drawdownRuleData, drawdownCurrentData } = useMemo(() => {
+    const empty = { drawdownRuleData: undefined, drawdownCurrentData: undefined };
+    if (!ruleDrawdown || chartData.length === 0) return empty;
 
-  const drawdownCurrentData = useMemo(() => {
-    if (!ruleDrawdown) return undefined;
+    const isIntraday = account.drawdownType === "INTRADAY";
+    const isFunded = account.accountType === "FUNDED";
+    // Pour funded en INTRADAY, le floor se fige à accountSize + buffer
+    const buffer = account.rule?.buffer ?? 0;
+    const floorCap = account.accountSize + buffer;
 
-    // Pour chaque date, on prend la saisie la plus récente (tradeEntries est trié desc)
+    // --- Courbe règle (grise) ---
+    let peakBalance = account.accountSize;
+    const ruleFloorAtPoint: number[] = chartData.map((point) => {
+      if (isIntraday) {
+        if (point.value > peakBalance) peakBalance = point.value;
+        const floor = peakBalance - ruleDrawdown;
+        return isFunded ? Math.min(floor, floorCap) : floor;
+      }
+      return account.accountSize - ruleDrawdown; // EOD : fixe
+    });
+
+    // --- Courbe DD actuel (colorée) ---
     const ddByDate = new Map<string, number>();
     for (const entry of account.tradeEntries) {
       if (entry.drawdownAtClose !== null && !ddByDate.has(entry.tradeDate)) {
@@ -169,28 +185,28 @@ export function AccountDetail({ account }: AccountDetailProps) {
       }
     }
 
-    const ruleFloor = account.accountSize - ruleDrawdown;
     let lastDD: number | null = null;
-
-    return chartData.map((point) => {
+    const currentData = chartData.map((point, idx) => {
       const dd = ddByDate.get(point.date);
       if (dd !== undefined) lastDD = dd;
 
-      // Avant la première saisie de drawdown, on part du drawdown règle complet
       const effectiveDD = lastDD ?? ruleDrawdown;
       const floor = point.value - effectiveDD;
+      const ruleFloor = ruleFloorAtPoint[idx]!;
 
       let color: string;
       if (effectiveDD < ruleDrawdown * 0.5) {
-        color = "#ef4444";                  // rouge : plus de 50% du DD consommé
+        color = "#ef4444"; // rouge : > 50% du DD consommé
       } else if (floor >= ruleFloor) {
-        color = "#22c55e";                  // vert : floor au-dessus du floor règle
+        color = "#22c55e"; // vert : au-dessus du floor règle
       } else {
-        color = "#f97316";                  // orange : floor en-dessous du floor règle
+        color = "#f97316"; // orange : en-dessous du floor règle
       }
       return { value: floor, color };
     });
-  }, [account.tradeEntries, ruleDrawdown, account.accountSize, chartData]);
+
+    return { drawdownRuleData: ruleFloorAtPoint, drawdownCurrentData: currentData };
+  }, [ruleDrawdown, chartData, account.drawdownType, account.accountSize, account.accountType, account.rule?.buffer, account.tradeEntries]);
 
   const chartPeriod = useMemo(() => {
     const startDate = tradingDaysStartDate;
@@ -355,7 +371,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
             data={chartData}
             period={chartPeriod}
             referenceValue={account.accountSize}
-            drawdownRuleFloor={drawdownRuleFloor}
+            drawdownRuleData={drawdownRuleData}
             drawdownCurrentData={drawdownCurrentData}
             status={chartStatus.status}
             statusLabel={chartStatus.label}
