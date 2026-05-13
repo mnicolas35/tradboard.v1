@@ -4,12 +4,14 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountPerformanceCalendar } from "@/components/accounts/AccountPerformanceCalendar";
 import { GrowthCurveChart, formatMonthYear } from "@/components/accounts/GrowthCurveChart";
+import { Field } from "@/components/forms/FormControls";
 import { TradingDayForm } from "@/components/forms/TradingDayForm";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/format";
 import {
   closeAccount,
   closeFailedEvaluation,
+  createPayout,
   deleteAccount,
   resetEvaluation,
   updateAccountDetails,
@@ -21,7 +23,16 @@ type AccountDetailProps = {
   account: AccountSummary;
 };
 
-type DetailModal = "activation" | "delete" | "failed" | "reset" | "settings" | "trade" | "close" | null;
+type DetailModal = "activation" | "delete" | "failed" | "reset" | "settings" | "trade" | "close" | "payout" | null;
+type ChartRange = "all" | "7j" | "1M" | "3M" | "6M";
+
+const chartRanges: Array<{ id: ChartRange; label: string; months?: number; days?: number }> = [
+  { id: "all", label: "all" },
+  { id: "7j", label: "7j", days: 7 },
+  { id: "1M", label: "1M", months: 1 },
+  { id: "3M", label: "3M", months: 3 },
+  { id: "6M", label: "6M", months: 6 }
+];
 
 function DetailField({
   label,
@@ -62,6 +73,132 @@ function tradingDaysFrom(days: TradingDaySummary[], startDate: string | null) {
   }
 
   return days.filter((day) => day.tradeDate >= startDate);
+}
+
+function currentDrawdownPoints(account: AccountSummary, days: TradingDaySummary[]) {
+  const maxDrawdown = account.rule?.maxDrawdown ?? null;
+  if (maxDrawdown === null || days.length === 0) {
+    return undefined;
+  }
+
+  const sorted = [...days].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+  const trades = [...account.tradeEntries].sort((a, b) => (
+    a.tradeDate.localeCompare(b.tradeDate) || (a.createdAtTime ?? "").localeCompare(b.createdAtTime ?? "")
+  ));
+  const drawdownByDate = new Map<string, number>();
+  let runningDrawdown = maxDrawdown;
+
+  for (const trade of trades) {
+    runningDrawdown = trade.drawdownAtClose ?? runningDrawdown + trade.profitLossUsd;
+    drawdownByDate.set(trade.tradeDate, runningDrawdown);
+  }
+
+  let latestDrawdown = maxDrawdown;
+  return sorted.map((day) => {
+    latestDrawdown = drawdownByDate.get(day.tradeDate) ?? latestDrawdown + day.profitLossUsd;
+    return latestDrawdown;
+  });
+}
+
+function accountChartSeries(account: AccountSummary) {
+  const balanceEvents = account.dailyResults.map((day) => ({
+    date: day.tradeDate,
+    amount: day.profitLossUsd,
+    type: "trade" as const
+  }));
+  const payoutEvents = account.payouts
+    .filter((payout) => payout.status === "PAID")
+    .map((payout) => ({
+      date: payout.date,
+      amount: payout.amount,
+      type: "payout" as const
+    }));
+  const events = [...balanceEvents, ...payoutEvents].sort((a, b) => (
+    a.date.localeCompare(b.date) || (a.type === "trade" ? -1 : 1)
+  ));
+  const maxDrawdown = account.rule?.maxDrawdown ?? null;
+  const drawdownByDate = new Map<string, number>();
+  let runningTradeDrawdown = maxDrawdown ?? 0;
+
+  for (const trade of [...account.tradeEntries].sort((a, b) => (
+    a.tradeDate.localeCompare(b.tradeDate) || (a.createdAtTime ?? "").localeCompare(b.createdAtTime ?? "")
+  ))) {
+    runningTradeDrawdown = trade.drawdownAtClose ?? runningTradeDrawdown + trade.profitLossUsd;
+    drawdownByDate.set(trade.tradeDate, runningTradeDrawdown);
+  }
+
+  let balance = account.accountSize;
+  let currentDrawdown = maxDrawdown ?? 0;
+  const balanceData: { date: string; value: number }[] = [];
+  const drawdownData: number[] = [];
+  const payoutMarkers: { index: number; value: number; amount: number }[] = [];
+
+  for (const event of events) {
+    if (event.type === "trade") {
+      balance += event.amount;
+      currentDrawdown = drawdownByDate.get(event.date) ?? currentDrawdown + event.amount;
+    } else {
+      balance -= event.amount;
+      currentDrawdown -= event.amount;
+    }
+
+    const index = balanceData.length;
+    balanceData.push({ date: event.date, value: balance });
+    drawdownData.push(currentDrawdown);
+
+    if (event.type === "payout") {
+      payoutMarkers.push({ index, value: balance, amount: event.amount });
+    }
+  }
+
+  if (drawdownData.length > 0) {
+    drawdownData[drawdownData.length - 1] = account.currentActualDrawdown;
+  }
+
+  return {
+    balanceData,
+    drawdownData: maxDrawdown === null || drawdownData.length === 0 ? undefined : drawdownData,
+    payoutMarkers
+  };
+}
+
+function filterChartSeries(
+  data: { date: string; value: number }[],
+  drawdownRuleData: number[] | undefined,
+  payoutMarkers: { index: number; value: number; amount: number }[],
+  range: ChartRange
+) {
+  const rangeConfig = chartRanges.find((item) => item.id === range);
+  if ((!rangeConfig?.months && !rangeConfig?.days) || data.length === 0) {
+    return { data, drawdownRuleData, payoutMarkers };
+  }
+
+  const latestDate = data.reduce((latest, point) => (point.date > latest ? point.date : latest), data[0]!.date);
+  const cutoff = new Date(`${latestDate}T00:00:00`);
+  if (rangeConfig.days) {
+    cutoff.setDate(cutoff.getDate() - rangeConfig.days);
+  } else if (rangeConfig.months) {
+    cutoff.setMonth(cutoff.getMonth() - rangeConfig.months);
+  }
+  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  const includedIndexes = data
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => point.date >= cutoffDate);
+
+  if (includedIndexes.length === 0) {
+    return { data, drawdownRuleData, payoutMarkers };
+  }
+
+  const indexMap = new Map(includedIndexes.map(({ index }, viewIndex) => [index, viewIndex]));
+
+  return {
+    data: includedIndexes.map(({ point }) => point),
+    drawdownRuleData: drawdownRuleData ? includedIndexes.map(({ index }) => drawdownRuleData[index]!) : undefined,
+    payoutMarkers: payoutMarkers.flatMap((marker) => {
+      const index = indexMap.get(marker.index);
+      return index === undefined ? [] : [{ ...marker, index }];
+    })
+  };
 }
 
 function consistencySnapshot(account: AccountSummary, days: TradingDaySummary[]) {
@@ -143,8 +280,16 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const [modal, setModal] = useState<DetailModal>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [chartRange, setChartRange] = useState<ChartRange>("all");
   const isPositive = account.accountBalanceUsd >= account.accountSize;
   const ruleDrawdown = account.rule?.maxDrawdown ?? null;
+  const drawdownLimit = ruleDrawdown;
+  const dangerThresholdValue =
+    drawdownLimit === null
+      ? undefined
+      : account.accountType === "FUNDED"
+        ? account.accountSize + drawdownLimit * 0.5
+        : account.accountSize - drawdownLimit * 0.5;
   const ruleTarget = account.rule?.target ?? null;
   const targetValue = ruleTarget === null ? null : `${formatCurrency(account.currentResultUsd)} / ${formatCurrency(ruleTarget)}`;
   const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
@@ -157,10 +302,13 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const ruleTradingDays = tradingDaysFrom(account.dailyResults, tradingDaysStartDate);
   const consistency = consistencySnapshot(account, ruleTradingDays);
 
-  const chartData = useMemo(() => cumulativeBalancePoints(account.dailyResults, account.accountSize), [account.dailyResults, account.accountSize]);
+  const chartSeries = useMemo(() => accountChartSeries(account), [account]);
+  const fullChartData = chartSeries.balanceData;
+  const fundedBuffer = account.accountType === "FUNDED" ? (account.rule?.buffer ?? account.rule?.payoutBuffer ?? null) : null;
+  const fundedBufferValue = fundedBuffer !== null ? account.accountSize + fundedBuffer : undefined;
 
-  const drawdownRuleData = useMemo((): number[] | undefined => {
-    if (!ruleDrawdown || chartData.length === 0) return undefined;
+  const fullDrawdownRuleData = useMemo((): number[] | undefined => {
+    if (!ruleDrawdown || fullChartData.length === 0) return undefined;
 
     // Le floor est toujours trailing (EOD ou INTRADAY) : il suit le pic de solde.
     // "EOD" signifie que le check se fait à la clôture, pas que le floor est fixe.
@@ -170,12 +318,22 @@ export function AccountDetail({ account }: AccountDetailProps) {
     const floorCap = isFunded && buffer !== null ? account.accountSize + buffer : null;
 
     let peakBalance = account.accountSize;
-    return chartData.map((point) => {
+    return fullChartData.map((point) => {
       if (point.value > peakBalance) peakBalance = point.value;
       const floor = peakBalance - ruleDrawdown;
       return floorCap !== null ? Math.min(floor, floorCap) : floor;
     });
-  }, [ruleDrawdown, chartData, account.accountSize, account.accountType, account.rule?.buffer]);
+  }, [ruleDrawdown, fullChartData, account.accountSize, account.accountType, account.rule?.buffer]);
+
+  const filteredChartSeries = useMemo(
+    () => filterChartSeries(
+      fullChartData,
+      fullDrawdownRuleData,
+      chartSeries.payoutMarkers,
+      chartRange
+    ),
+    [fullChartData, fullDrawdownRuleData, chartSeries.payoutMarkers, chartRange]
+  );
 
   const chartPeriod = useMemo(() => {
     const startDate = tradingDaysStartDate;
@@ -277,7 +435,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <DetailField label="Type" value={account.accountType} />
           <DetailField label="Statut" value={account.status} />
         </div>
-        <div className={account.accountType === "EVALUATION" ? "account-info-row three" : "account-info-row two"}>
+        <div className={account.accountType === "EVALUATION" ? "account-info-row four" : "account-info-row three"}>
           <DetailField label="Solde" value={formatCurrency(account.accountBalanceUsd)} tone={isPositive ? "positive" : "negative"} />
           {account.accountType === "EVALUATION" ? (
             <DetailField
@@ -287,7 +445,12 @@ export function AccountDetail({ account }: AccountDetailProps) {
             />
           ) : null}
           <DetailField
-            label="Drawdown"
+            label="Drawdown actuel"
+            value={formatCurrency(account.currentActualDrawdown)}
+            tone={account.currentActualDrawdown < 0 ? "negative" : account.currentActualDrawdown > 0 ? "positive" : undefined}
+          />
+          <DetailField
+            label="Drawdown disponible"
             value={`${account.currentDrawdown !== null ? formatCurrency(account.currentDrawdown) : "-"} / ${ruleDrawdown !== null ? formatCurrency(ruleDrawdown) : "-"}`}
             tone={
               account.currentDrawdown !== null && ruleDrawdown !== null
@@ -300,7 +463,19 @@ export function AccountDetail({ account }: AccountDetailProps) {
         </div>
         <div className="account-info-row payout-row">
           <div className={payoutEligible ? "detail-field payout-field eligible" : "detail-field payout-field"}>
-            <span>Payout possible</span>
+            <div className="payout-field-head">
+              <span>Payout possible</span>
+              <button
+                aria-label="Effectuer un payout"
+                className={payoutEligible ? "payout-action-button active" : "payout-action-button"}
+                disabled={!payoutEligible}
+                title={payoutEligible ? "Effectuer un payout" : account.payoutEligibility.reasons[0] ?? "Payout non disponible"}
+                type="button"
+                onClick={() => setModal("payout")}
+              >
+                $
+              </button>
+            </div>
             <strong>{payoutValue}</strong>
             {account.accountType === "FUNDED" && account.payoutEligibility.reasons.length > 0 ? (
               <small>{account.payoutEligibility.reasons[0]}</small>
@@ -333,29 +508,93 @@ export function AccountDetail({ account }: AccountDetailProps) {
       <section className="panel account-performance-panel">
         <div className="panel-header">
           <h2>Performance</h2>
-          <span className="muted">{account.tradedDaysCount} jour(s)</span>
+          <div className="performance-header-actions">
+            <span className="muted">{account.tradedDaysCount} jour(s)</span>
+            <div className="chart-range-toggle" aria-label="Filtre du graphique">
+              {chartRanges.map((range) => (
+                <button
+                  aria-pressed={chartRange === range.id}
+                  className={chartRange === range.id ? "active" : ""}
+                  key={range.id}
+                  type="button"
+                  onClick={() => setChartRange(range.id)}
+                >
+                  {range.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="account-performance-layout">
           <GrowthCurveChart
-            data={chartData}
+            data={filteredChartSeries.data}
             referenceValue={account.accountSize}
-            drawdownRuleData={drawdownRuleData}
+            drawdownRuleData={filteredChartSeries.drawdownRuleData}
             capitalInitial={account.accountSize}
             maxDrawdown={ruleDrawdown ?? undefined}
-            bufferLevel={
-              account.accountType === "FUNDED" && (account.rule?.buffer ?? null) !== null
-                ? account.accountSize + account.rule!.buffer!
-                : undefined
-            }
+            dangerThresholdValue={dangerThresholdValue}
+            fundedBufferValue={fundedBufferValue}
+            payoutMarkers={filteredChartSeries.payoutMarkers}
             status={chartStatus.status}
             statusLabel={chartStatus.label}
           />
-          <AccountPerformanceCalendar days={account.dailyResults} trades={account.tradeEntries} currentDrawdown={account.currentDrawdown} ruleDrawdown={account.rule?.maxDrawdown ?? null} />
+          <AccountPerformanceCalendar
+            days={account.dailyResults}
+            trades={account.tradeEntries}
+            currentDrawdown={account.currentDrawdown}
+            currentActualDrawdown={account.currentActualDrawdown}
+            currentResultUsd={account.currentResultUsd}
+            drawdownLimit={drawdownLimit}
+            fundedBuffer={account.accountType === "FUNDED" ? (account.rule?.buffer ?? null) : null}
+            accountType={account.accountType as "EVALUATION" | "FUNDED"}
+            ruleDrawdown={account.rule?.maxDrawdown ?? null}
+          />
         </div>
       </section>
 
       <Modal isOpen={modal === "trade"} title="Add trading day" onClose={() => setModal(null)}>
         <TradingDayForm accounts={[account]} hideAccountSelect onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
+      </Modal>
+
+      <Modal isOpen={modal === "payout"} title="Effectuer un payout" onClose={() => setModal(null)}>
+        <form
+          className="form-panel"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAction(createPayout, new FormData(event.currentTarget));
+          }}
+        >
+          <div className="form-grid">
+            <input name="accountId" type="hidden" value={account.id} />
+            <input name="currency" type="hidden" value="USD" />
+            <input name="status" type="hidden" value="PAID" />
+            <label className="form-field">
+              <span>Montant payout - max {formatCurrency(account.payoutEligibility.availableAmount)}</span>
+              <input
+                max={account.payoutEligibility.availableAmount}
+                min={0}
+                name="amount"
+                required
+                step="any"
+                type="number"
+              />
+            </label>
+            <Field label="Date" name="payoutDate" required type="date" defaultValue={today} />
+            <label className="form-field wide">
+              <span>Notes</span>
+              <textarea name="notes" rows={3} />
+            </label>
+          </div>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="form-actions split">
+            <button className="button secondary" disabled={isSubmitting} type="button" onClick={() => setModal(null)}>
+              Annuler
+            </button>
+            <button className="button positive" disabled={isSubmitting || !payoutEligible} type="submit">
+              {isSubmitting ? "Enregistrement..." : "Valider le payout"}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       <Modal isOpen={modal === "settings"} title="Modifier le compte" onClose={() => setModal(null)}>

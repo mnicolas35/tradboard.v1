@@ -143,6 +143,7 @@ export type AccountSummary = {
   } | null;
   drawdownType: "EOD" | "INTRADAY";
   currentDrawdown: number | null;
+  currentActualDrawdown: number;
   currentResultUsd: number;
   currentResultEur: number | null;
   accountBalanceUsd: number;

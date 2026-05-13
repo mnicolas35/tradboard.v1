@@ -55,6 +55,43 @@ function spreadLabels(
   return result;
 }
 
+function splitSegmentsByThreshold(
+  data: { value: number }[],
+  pts: { x: number; y: number }[],
+  threshold: number
+) {
+  const segments: Array<{ fromX: number; toX: number; isBlue: boolean }> = [];
+  if (data.length === 0 || pts.length === 0) return segments;
+
+  if (data.length === 1) {
+    segments.push({ fromX: pts[0]!.x, toX: pts[0]!.x, isBlue: data[0]!.value >= threshold });
+    return segments;
+  }
+
+  let fromX = pts[0]!.x;
+  let isBlue = data[0]!.value >= threshold;
+
+  for (let i = 1; i < data.length; i += 1) {
+    const prevValue = data[i - 1]!.value;
+    const currentValue = data[i]!.value;
+    const prevX = pts[i - 1]!.x;
+    const currentX = pts[i]!.x;
+    const crossesDown = prevValue >= threshold && currentValue < threshold;
+    const crossesUp = prevValue < threshold && currentValue >= threshold;
+
+    if (crossesDown || crossesUp) {
+      const t = currentValue !== prevValue ? (threshold - prevValue) / (currentValue - prevValue) : 0;
+      const crossingX = prevX + t * (currentX - prevX);
+      segments.push({ fromX, toX: crossingX, isBlue });
+      fromX = crossingX;
+      isBlue = currentValue >= threshold;
+    }
+  }
+
+  segments.push({ fromX, toX: pts[pts.length - 1]!.x, isBlue });
+  return segments;
+}
+
 export interface GrowthCurveChartProps {
   title?: string;
   data: { date: string; value: number }[];
@@ -67,7 +104,9 @@ export interface GrowthCurveChartProps {
   status?: "success" | "failure" | "neutral";
   statusLabel?: string;
   colorBadge?: string;
-  bufferLevel?: number;
+  dangerThresholdValue?: number;
+  fundedBufferValue?: number;
+  payoutMarkers?: { index: number; value: number; amount: number }[];
 }
 
 export function GrowthCurveChart({
@@ -82,7 +121,9 @@ export function GrowthCurveChart({
   status = "neutral",
   statusLabel,
   colorBadge,
-  bufferLevel,
+  dangerThresholdValue,
+  fundedBufferValue,
+  payoutMarkers = [],
 }: GrowthCurveChartProps) {
   const uid = useId().replace(/:/g, "");
 
@@ -99,6 +140,8 @@ export function GrowthCurveChart({
     const dataValues = data.map((d) => d.value);
     const refValues = referenceValue !== undefined ? [referenceValue] : [];
     const ruleValues = drawdownRuleData ?? [];
+    const thresholdValues = dangerThresholdValue !== undefined ? [dangerThresholdValue] : [];
+    const bufferValues = fundedBufferValue !== undefined ? [fundedBufferValue] : [];
 
     const showRed =
       showLimitLine &&
@@ -116,7 +159,7 @@ export function GrowthCurveChart({
       });
     }
 
-    const allValues = [...dataValues, ...refValues, ...ruleValues, ...redLineValues];
+    const allValues = [...dataValues, ...refValues, ...ruleValues, ...redLineValues, ...thresholdValues, ...bufferValues];
     if (allValues.length === 0) return null;
 
     let minV = Math.min(...allValues);
@@ -133,11 +176,17 @@ export function GrowthCurveChart({
       PAD_TOP + ((paddedMax - v) / paddedRange) * PLOT_H;
 
     const pts = data.map((d, i) => ({ x: toX(i), y: toY(d.value) }));
+    const payoutPts = payoutMarkers.map((marker) => ({
+      x: toX(marker.index),
+      y: toY(marker.value),
+      amount: marker.amount
+    }));
     const curvePath = smoothCurvePath(pts);
 
     const firstX = pts[0]?.x ?? PAD_LEFT;
     const lastX = pts[pts.length - 1]?.x ?? PAD_LEFT + PLOT_W;
     const bottomY = PAD_TOP + PLOT_H;
+    const topY = PAD_TOP;
     const fillPath =
       pts.length > 0
         ? `${curvePath} L ${lastX.toFixed(1)},${bottomY} L ${firstX.toFixed(1)},${bottomY} Z`
@@ -177,41 +226,24 @@ export function GrowthCurveChart({
       rawLabels.push({ y: lastRulePt.y, value: lastRuleVal, color: "#6b7280", endX: lastRulePt.x });
     }
 
-    const yLabels = spreadLabels(rawLabels);
-
-    // Buffer crossings
-    let firstCrossingX: number | null = null;  // solde dépasse bufferLevel pour la 1ère fois
-    let secondCrossingX: number | null = null; // solde repasse SOUS bufferLevel après l'avoir dépassé
-    let bufferLineY: number | null = null;
-    if (bufferLevel !== undefined && bufferLevel > 0 && pts.length > 0) {
-      bufferLineY = toY(bufferLevel);
-
-      for (let i = 0; i < data.length; i++) {
-        if ((data[i]?.value ?? 0) >= bufferLevel) {
-          if (i === 0) {
-            firstCrossingX = pts[0]!.x;
-          } else {
-            const prevVal = data[i - 1]!.value;
-            const currVal = data[i]!.value;
-            const t = currVal !== prevVal ? (bufferLevel - prevVal) / (currVal - prevVal) : 0;
-            firstCrossingX = pts[i - 1]!.x + t * (pts[i]!.x - pts[i - 1]!.x);
-          }
-          break;
-        }
-      }
-
-      if (firstCrossingX !== null) {
-        for (let i = 1; i < data.length; i++) {
-          const prevVal = data[i - 1]!.value;
-          const currVal = data[i]!.value;
-          if (prevVal >= bufferLevel && currVal < bufferLevel) {
-            const t = prevVal !== currVal ? (bufferLevel - prevVal) / (currVal - prevVal) : 0;
-            secondCrossingX = pts[i - 1]!.x + t * (pts[i]!.x - pts[i - 1]!.x);
-            break;
-          }
-        }
-      }
+    let dangerThresholdY: number | null = null;
+    let thresholdSegments: Array<{ fromX: number; toX: number; isBlue: boolean }> = [];
+    if (dangerThresholdValue !== undefined && pts.length > 0) {
+      dangerThresholdY = toY(dangerThresholdValue);
+      thresholdSegments = splitSegmentsByThreshold(data, pts, dangerThresholdValue);
     }
+
+    const fundedBufferY = fundedBufferValue !== undefined ? toY(fundedBufferValue) : null;
+    if (fundedBufferY !== null && fundedBufferValue !== undefined) {
+      rawLabels.push({
+        y: fundedBufferY,
+        value: fundedBufferValue,
+        color: "#f97316",
+        endX: SVG_W - PAD_RIGHT
+      });
+    }
+
+    const yLabels = spreadLabels(rawLabels);
 
     return {
       curvePath,
@@ -226,18 +258,21 @@ export function GrowthCurveChart({
       PAD_RIGHT,
       PAD_TOP,
       PLOT_W,
-      firstCrossingX,
-      secondCrossingX,
-      bufferLineY,
+      PLOT_H,
+      bottomY,
+      topY,
+      dangerThresholdY,
+      thresholdSegments,
+      fundedBufferY,
+      payoutPts,
     };
-  }, [data, referenceValue, drawdownRuleData, capitalInitial, maxDrawdown, showLimitLine, colorLimitLine, bufferLevel]);
+  }, [data, referenceValue, drawdownRuleData, capitalInitial, maxDrawdown, showLimitLine, colorLimitLine, dangerThresholdValue, fundedBufferValue, payoutMarkers]);
 
   const badgeColor =
     colorBadge ??
     (status === "success" ? "#22c55e" : status === "failure" ? "#ef4444" : "#9ca3af");
 
-  // Rouge uniquement si le solde est repassé SOUS le buffer après l'avoir dépassé
-  const hasBuffer = chart !== null && chart.secondCrossingX !== null && chart.bufferLineY !== null;
+  const hasDangerThreshold = chart !== null && chart.dangerThresholdY !== null;
 
   return (
     <div className="growth-curve-card">
@@ -276,21 +311,46 @@ export function GrowthCurveChart({
               <stop offset="0%" stopColor="rgba(239,68,68,0.28)" />
               <stop offset="100%" stopColor="rgba(239,68,68,0)" />
             </linearGradient>
-            {hasBuffer && chart.secondCrossingX !== null && chart.bufferLineY !== null ? (
+            {hasDangerThreshold && chart.dangerThresholdY !== null ? (
               <>
-                {/* Zone bleue : à gauche du 2e croisement OU au-dessus du buffer */}
+                {/* Zone bleue : solde au-dessus du seuil 50% DD */}
                 <clipPath id={`${uid}blueClip`}>
-                  <rect x={0} y={0} width={chart.secondCrossingX} height={chart.SVG_H} />
-                  <rect x={0} y={0} width={chart.SVG_W} height={chart.bufferLineY} />
+                  <rect x={0} y={0} width={chart.SVG_W} height={chart.dangerThresholdY} />
                 </clipPath>
-                {/* Zone rouge : à droite du 2e croisement ET en dessous du buffer */}
+                <clipPath id={`${uid}blueFillClip`}>
+                  {chart.thresholdSegments
+                    .filter((segment) => segment.isBlue)
+                    .map((segment, index) => (
+                      <rect
+                        key={`blue-fill-${index}`}
+                        x={segment.fromX}
+                        y={0}
+                        width={Math.max(0, segment.toX - segment.fromX)}
+                        height={chart.SVG_H}
+                      />
+                    ))}
+                </clipPath>
+                {/* Zone rouge : solde sous le seuil 50% DD */}
                 <clipPath id={`${uid}redClip`}>
                   <rect
-                    x={chart.secondCrossingX}
-                    y={chart.bufferLineY}
-                    width={chart.SVG_W - chart.secondCrossingX}
-                    height={chart.SVG_H - chart.bufferLineY}
+                    x={0}
+                    y={chart.dangerThresholdY}
+                    width={chart.SVG_W}
+                    height={chart.SVG_H - chart.dangerThresholdY}
                   />
+                </clipPath>
+                <clipPath id={`${uid}redFillClip`}>
+                  {chart.thresholdSegments
+                    .filter((segment) => !segment.isBlue)
+                    .map((segment, index) => (
+                      <rect
+                        key={`red-fill-${index}`}
+                        x={segment.fromX}
+                        y={0}
+                        width={Math.max(0, segment.toX - segment.fromX)}
+                        height={chart.SVG_H}
+                      />
+                    ))}
                 </clipPath>
               </>
             ) : null}
@@ -374,7 +434,7 @@ export function GrowthCurveChart({
           <path
             d={chart.fillPath}
             fill={`url(#${uid}blueGrad)`}
-            clipPath={hasBuffer ? `url(#${uid}blueClip)` : undefined}
+            clipPath={hasDangerThreshold ? `url(#${uid}blueFillClip)` : undefined}
           />
           <path
             d={chart.curvePath}
@@ -383,16 +443,16 @@ export function GrowthCurveChart({
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            clipPath={hasBuffer ? `url(#${uid}blueClip)` : undefined}
+            clipPath={hasDangerThreshold ? `url(#${uid}blueClip)` : undefined}
           />
 
-          {/* Courbe rouge + dégradé (zone sous buffer après croisement) */}
-          {hasBuffer ? (
+          {/* Courbe rouge + dégradé : sous 50% du DD disponible */}
+          {hasDangerThreshold ? (
             <>
               <path
                 d={chart.fillPath}
                 fill={`url(#${uid}redGrad)`}
-                clipPath={`url(#${uid}redClip)`}
+                clipPath={`url(#${uid}redFillClip)`}
               />
               <path
                 d={chart.curvePath}
@@ -405,6 +465,51 @@ export function GrowthCurveChart({
               />
             </>
           ) : null}
+
+          {chart.fundedBufferY !== null ? (
+            <g>
+              <line
+                x1={chart.PAD_LEFT}
+                x2={chart.SVG_W - chart.PAD_RIGHT}
+                y1={chart.fundedBufferY}
+                y2={chart.fundedBufferY}
+                stroke="#f97316"
+                strokeWidth="1"
+                shapeRendering="crispEdges"
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={chart.SVG_W - chart.PAD_RIGHT - 4}
+                y={chart.fundedBufferY - 5}
+                textAnchor="end"
+                fill="#f97316"
+                fontSize="9"
+                fontWeight="600"
+              >
+                buffer
+              </text>
+            </g>
+          ) : null}
+
+          {chart.payoutPts.map((marker, index) => (
+            <g key={`payout-marker-${index}`}>
+              <circle
+                cx={marker.x}
+                cy={marker.y}
+                r="5"
+                fill="#22c55e"
+                stroke="var(--surface)"
+                strokeWidth="2"
+              />
+              <circle
+                cx={marker.x}
+                cy={marker.y}
+                r="9"
+                fill="#22c55e"
+                opacity="0.14"
+              />
+            </g>
+          ))}
         </svg>
       )}
     </div>

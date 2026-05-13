@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { calculateNextTradeDrawdown } from "@/lib/drawdown";
 import { formatCurrency } from "@/lib/format";
 import { deleteTradingDay, updateTradingDay } from "@/server/actions/tradboard-actions";
 import type { TradeEntrySummary, TradingDaySummary } from "@/types";
@@ -11,6 +12,11 @@ type AccountPerformanceCalendarProps = {
   days: TradingDaySummary[];
   trades: TradeEntrySummary[];
   currentDrawdown: number | null;
+  currentActualDrawdown: number;
+  currentResultUsd: number;
+  drawdownLimit: number | null;
+  fundedBuffer: number | null;
+  accountType: "EVALUATION" | "FUNDED";
   ruleDrawdown: number | null;
 };
 
@@ -38,16 +44,37 @@ function getMonthDays(reference: Date) {
   return cells;
 }
 
-function calcDrawdown(profitLoss: string, currentDrawdown: number | null, ruleDrawdown: number | null): string {
-  if (ruleDrawdown === null) return "";
+function calcDrawdown(
+  profitLoss: string,
+  currentResultUsd: number,
+  currentActualDrawdown: number,
+  drawdownLimit: number | null,
+  accountType: "EVALUATION" | "FUNDED",
+  fundedBuffer: number | null
+): string {
   const pl = parseFloat(profitLoss);
   if (isNaN(pl)) return "";
-  const base = currentDrawdown ?? ruleDrawdown;
-  const suggested = base >= ruleDrawdown ? ruleDrawdown : base + pl;
-  return String(Math.round(suggested * 100) / 100);
+  const suggested = calculateNextTradeDrawdown(
+    currentResultUsd,
+    currentActualDrawdown,
+    pl,
+    drawdownLimit,
+    accountType,
+    fundedBuffer
+  );
+  return suggested === null ? "" : String(suggested);
 }
 
-export function AccountPerformanceCalendar({ days, trades, currentDrawdown, ruleDrawdown }: AccountPerformanceCalendarProps) {
+export function AccountPerformanceCalendar({
+  days,
+  trades,
+  currentActualDrawdown,
+  currentResultUsd,
+  drawdownLimit,
+  fundedBuffer,
+  accountType,
+  ruleDrawdown
+}: AccountPerformanceCalendarProps) {
   const router = useRouter();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -98,7 +125,12 @@ export function AccountPerformanceCalendar({ days, trades, currentDrawdown, rule
 
   function handleEditProfitLossChange(value: string) {
     setEditProfitLoss(value);
-    setEditDrawdown(calcDrawdown(value, currentDrawdown, ruleDrawdown));
+    const baseDrawdown =
+      editingTrade?.drawdownAtClose !== null && editingTrade?.drawdownAtClose !== undefined
+        ? editingTrade.drawdownAtClose - editingTrade.profitLossUsd
+        : currentActualDrawdown;
+    const baseResult = editingTrade ? currentResultUsd - editingTrade.profitLossUsd : currentResultUsd;
+    setEditDrawdown(calcDrawdown(value, baseResult, baseDrawdown, drawdownLimit, accountType, fundedBuffer));
   }
 
   async function submitTradeAction(action: (formData: FormData) => Promise<void>, formData: FormData) {
@@ -235,9 +267,9 @@ export function AccountPerformanceCalendar({ days, trades, currentDrawdown, rule
               </label>
               <label className="form-field">
                 <span>
-                  Drawdown disponible (DD suiveur)
+                  Drawdown actuel après trade
                   {ruleDrawdown !== null ? (
-                    <small className="muted"> — base {currentDrawdown === null ? "règle" : ""} : {currentDrawdown ?? ruleDrawdown}</small>
+                    <small className="muted"> — base actuelle {currentActualDrawdown}, plafond disponible {drawdownLimit ?? ruleDrawdown}</small>
                   ) : null}
                 </span>
                 <input

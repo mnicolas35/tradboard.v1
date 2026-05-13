@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { calculateNextTradeDrawdown } from "@/lib/drawdown";
 import { createTradingDay } from "@/server/actions/tradboard-actions";
 import type { AccountSummary } from "@/types";
 import { Field, TextArea } from "./FormControls";
@@ -20,15 +21,25 @@ function todayInputValue() {
   return `${today.getFullYear()}-${month}-${day}`;
 }
 
-function calcDrawdown(profitLoss: string, currentDrawdown: number | null, ruleDrawdown: number | null): string {
-  if (ruleDrawdown === null) return "";
+function calcDrawdown(
+  profitLoss: string,
+  currentResultUsd: number,
+  currentActualDrawdown: number,
+  drawdownLimit: number | null,
+  accountType: "EVALUATION" | "FUNDED",
+  fundedBuffer: number | null
+): string {
   const pl = parseFloat(profitLoss);
   if (isNaN(pl)) return "";
-  const base = currentDrawdown ?? ruleDrawdown;
-  // Trailing DD: floor rises with gains, remaining stays ≈ ruleDrawdown
-  // Capped DD (post-buffer funded): floor is frozen, remaining grows with gains
-  const suggested = base >= ruleDrawdown ? ruleDrawdown : base + pl;
-  return String(Math.round(suggested * 100) / 100);
+  const suggested = calculateNextTradeDrawdown(
+    currentResultUsd,
+    currentActualDrawdown,
+    pl,
+    drawdownLimit,
+    accountType,
+    fundedBuffer
+  );
+  return suggested === null ? "" : String(suggested);
 }
 
 export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, onSuccess }: TradingDayFormProps) {
@@ -40,8 +51,12 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
   const [drawdownInput, setDrawdownInput] = useState("");
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
-  const currentDrawdown = selectedAccount?.currentDrawdown ?? null;
   const ruleDrawdown = selectedAccount?.rule?.maxDrawdown ?? null;
+  const drawdownLimit = ruleDrawdown;
+  const currentActualDrawdown = selectedAccount?.currentActualDrawdown ?? 0;
+  const currentResultUsd = selectedAccount?.currentResultUsd ?? 0;
+  const accountType = (selectedAccount?.accountType as "EVALUATION" | "FUNDED") ?? "EVALUATION";
+  const fundedBuffer = accountType === "FUNDED" ? (selectedAccount?.rule?.buffer ?? null) : null;
 
   const options = accounts.map((account) => ({
     id: account.id,
@@ -51,14 +66,21 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
   function handleAccountChange(id: string) {
     setSelectedAccountId(id);
     const account = accounts.find((a) => a.id === id);
-    const accCurrentDD = account?.currentDrawdown ?? null;
-    const accRuleDD = account?.rule?.maxDrawdown ?? null;
-    setDrawdownInput(calcDrawdown(profitLossInput, accCurrentDD, accRuleDD));
+    setDrawdownInput(
+      calcDrawdown(
+        profitLossInput,
+        account?.currentResultUsd ?? 0,
+        account?.currentActualDrawdown ?? 0,
+        account?.rule?.maxDrawdown ?? null,
+        (account?.accountType as "EVALUATION" | "FUNDED") ?? "EVALUATION",
+        account?.accountType === "FUNDED" ? (account.rule?.buffer ?? null) : null
+      )
+    );
   }
 
   function handleProfitLossChange(value: string) {
     setProfitLossInput(value);
-    setDrawdownInput(calcDrawdown(value, currentDrawdown, ruleDrawdown));
+    setDrawdownInput(calcDrawdown(value, currentResultUsd, currentActualDrawdown, drawdownLimit, accountType, fundedBuffer));
   }
 
   return (
@@ -115,9 +137,9 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
         </label>
         <label className="form-field">
           <span>
-            Drawdown disponible (DD suiveur)
+            Drawdown actuel après trade
             {ruleDrawdown !== null ? (
-              <small className="muted"> — base {currentDrawdown === null ? "règle" : ""} : {currentDrawdown ?? ruleDrawdown}</small>
+              <small className="muted"> — base actuelle {selectedAccount?.currentActualDrawdown ?? 0}, plafond disponible {drawdownLimit ?? ruleDrawdown}</small>
             ) : null}
           </span>
           <input

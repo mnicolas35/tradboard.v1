@@ -11,6 +11,15 @@ function sessionSecret() {
   return process.env.AUTH_SECRET ?? process.env.DATABASE_URL ?? "tradboard-local-session-secret";
 }
 
+function shouldSecureSessionCookie() {
+  if (process.env.AUTH_COOKIE_SECURE !== undefined) {
+    return process.env.AUTH_COOKIE_SECURE === "true";
+  }
+
+  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  return appUrl.startsWith("https://");
+}
+
 function signSession(userId: string, expiresAt: number) {
   return createHmac("sha256", sessionSecret()).update(`${userId}.${expiresAt}`).digest("base64url");
 }
@@ -30,8 +39,9 @@ export async function createSession(userId: string) {
   cookies().set(SESSION_COOKIE, `${userId}.${expiresAt}.${signature}`, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldSecureSessionCookie(),
     path: "/",
+    maxAge: Math.floor(SESSION_DURATION_MS / 1000),
     expires: new Date(expiresAt)
   });
 }

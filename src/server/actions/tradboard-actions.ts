@@ -12,7 +12,9 @@ import type {
 import type { DrawdownType, PayoutRuleType, ThemePreference } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { isSupportedCurrency } from "@/lib/currency";
+import { calculateNextTradeDrawdown } from "@/lib/drawdown";
 import { calculateEvaluationEligibility } from "@/lib/evaluation";
+import { calculatePayoutEligibility } from "@/lib/payout";
 import { prisma } from "@/lib/prisma";
 import { resolveAccountRule } from "@/lib/rules";
 import { getCurrentUser } from "@/server/auth/current-user";
@@ -137,6 +139,59 @@ function evaluationDays(tradingDays: Array<{ tradeDate: Date; profitLoss: Prisma
   }
 
   return [...totals.values()].map((profitLossUsd) => ({ profitLossUsd }));
+}
+
+async function recalculateAccountDrawdowns(accountId: string) {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    include: {
+      propFirmRule: true,
+      ruleOverride: true,
+      tradingDays: { orderBy: [{ tradeDate: "asc" }, { createdAt: "asc" }, { id: "asc" }] }
+    }
+  });
+
+  if (!account) {
+    return;
+  }
+
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const drawdownLimit = resolvedRule?.maxDrawdown ?? null;
+  const fundedBuffer = account.accountType === "FUNDED" ? (resolvedRule?.buffer ?? null) : null;
+  let currentActualDrawdown = drawdownLimit ?? 0;
+  let currentResultUsd = 0;
+
+  const updates = account.tradingDays.flatMap((day) => {
+    const profitLoss = Number(day.profitLoss);
+    const nextDrawdown = calculateNextTradeDrawdown(
+      currentResultUsd,
+      currentActualDrawdown,
+      profitLoss,
+      drawdownLimit,
+      account.accountType,
+      fundedBuffer
+    );
+    if (nextDrawdown !== null) {
+      currentActualDrawdown = nextDrawdown;
+    }
+    currentResultUsd += profitLoss;
+
+    if (day.drawdownAtClose !== null) {
+      currentActualDrawdown = Number(day.drawdownAtClose);
+      return [];
+    }
+
+    return prisma.tradingDay.update({
+      where: { id: day.id },
+      data: {
+        drawdownAtClose: nextDrawdown
+      }
+    });
+  });
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
+  }
 }
 
 async function assertAdmin() {
@@ -393,7 +448,48 @@ export async function createTradingDay(formData: FormData) {
   const tradeDate = optionalDate(formData, "tradeDate") ?? todayUtcDate();
   const profitLoss = requiredDecimal(formData, "profitLoss");
 
-  await assertOwnAccount(accountId, currentUser.id);
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id },
+    include: {
+      propFirmRule: true,
+      ruleOverride: true,
+      payouts: true,
+      tradingDays: { orderBy: [{ tradeDate: "desc" }, { createdAt: "desc" }] }
+    }
+  });
+
+  if (!account) {
+    throw new Error("Compte introuvable pour cet utilisateur.");
+  }
+
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const tradingResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
+  const paidPayoutsUsd = account.payouts
+    .filter((payout) => payout.status === "PAID")
+    .reduce((sum, payout) => sum + Number(payout.amount), 0);
+  const drawdownLimit = resolvedRule?.maxDrawdown ?? null;
+  const fundedBuffer = account.accountType === "FUNDED" ? (resolvedRule?.buffer ?? null) : null;
+  const lastDrawdownDay = account.tradingDays.find((day) => day.drawdownAtClose !== null);
+  const payoutsAfterLastDrawdown = lastDrawdownDay
+    ? account.payouts
+      .filter((payout) => (
+        payout.status === "PAID" &&
+        payout.createdAt > lastDrawdownDay.createdAt
+      ))
+      .reduce((sum, payout) => sum + Number(payout.amount), 0)
+    : 0;
+  const currentActualDrawdown = lastDrawdownDay?.drawdownAtClose !== undefined && lastDrawdownDay.drawdownAtClose !== null
+    ? Number(lastDrawdownDay.drawdownAtClose) - payoutsAfterLastDrawdown
+    : drawdownLimit ?? 0;
+  const submittedDrawdown = optionalDecimal(formData, "drawdownAtClose");
+  const suggestedDrawdown = calculateNextTradeDrawdown(
+    tradingResultUsd - paidPayoutsUsd,
+    currentActualDrawdown,
+    Number(profitLoss),
+    drawdownLimit,
+    account.accountType,
+    fundedBuffer
+  );
 
   await prisma.tradingDay.create({
     data: {
@@ -401,12 +497,13 @@ export async function createTradingDay(formData: FormData) {
       accountId,
       tradeDate,
       profitLoss,
-      drawdownAtClose: optionalDecimal(formData, "drawdownAtClose"),
+      drawdownAtClose: submittedDrawdown ?? (suggestedDrawdown === null ? null : String(suggestedDrawdown)),
       tradeCount: optionalInt(formData, "tradeCount"),
       notes: optionalText(formData, "notes")
     }
   });
 
+  await recalculateAccountDrawdowns(accountId);
   refresh();
 }
 
@@ -438,6 +535,14 @@ export async function updateTradingDay(formData: FormData) {
     }
   });
 
+  const tradingDay = await prisma.tradingDay.findUnique({
+    where: { id: tradingDayId },
+    select: { accountId: true }
+  });
+
+  if (tradingDay) {
+    await recalculateAccountDrawdowns(tradingDay.accountId);
+  }
   refresh();
 }
 
@@ -451,7 +556,14 @@ export async function deleteTradingDay(formData: FormData) {
   }
 
   await assertOwnTradingDay(tradingDayId, currentUser.id);
+  const tradingDay = await prisma.tradingDay.findUnique({
+    where: { id: tradingDayId },
+    select: { accountId: true }
+  });
   await prisma.tradingDay.delete({ where: { id: tradingDayId } });
+  if (tradingDay) {
+    await recalculateAccountDrawdowns(tradingDay.accountId);
+  }
 
   refresh();
 }
@@ -481,16 +593,70 @@ export async function createPayout(formData: FormData) {
   const currentUser = await getCurrentUser();
   const accountId = requiredText(formData, "accountId");
 
-  await assertOwnAccount(accountId, currentUser.id);
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: currentUser.id },
+    include: {
+      propFirmRule: true,
+      ruleOverride: true,
+      payouts: true,
+      tradingDays: { orderBy: [{ tradeDate: "desc" }, { createdAt: "desc" }] }
+    }
+  });
+
+  if (!account) {
+    throw new Error("Compte introuvable pour cet utilisateur.");
+  }
+
+  if (account.accountType !== "FUNDED") {
+    throw new Error("Les payouts ne sont disponibles que sur les comptes funded.");
+  }
+
+  const amount = Number(requiredDecimal(formData, "amount"));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Le montant du payout doit etre superieur a 0.");
+  }
+
+  const status = requiredText(formData, "status") as PayoutStatus;
+  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
+  const tradingResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
+  const paidPayoutsUsd = account.payouts
+    .filter((payout) => payout.status === "PAID")
+    .reduce((sum, payout) => sum + Number(payout.amount), 0);
+  const currentResultUsd = tradingResultUsd - paidPayoutsUsd;
+  const activationDate = account.activationDate?.toISOString().slice(0, 10) ?? null;
+  const payoutDaysByDate = new Map<string, number>();
+
+  for (const day of account.tradingDays) {
+    const tradeDate = day.tradeDate.toISOString().slice(0, 10);
+    if (activationDate && tradeDate < activationDate) {
+      continue;
+    }
+
+    payoutDaysByDate.set(tradeDate, (payoutDaysByDate.get(tradeDate) ?? 0) + Number(day.profitLoss));
+  }
+
+  const payoutEligibility = calculatePayoutEligibility(
+    currentResultUsd,
+    [...payoutDaysByDate.values()].map((profitLossUsd) => ({ profitLossUsd })),
+    resolvedRule
+  );
+
+  if (!payoutEligibility.isEligible) {
+    throw new Error(payoutEligibility.reasons[0] ?? "Les regles de payout ne sont pas respectees.");
+  }
+
+  if (amount > payoutEligibility.availableAmount) {
+    throw new Error(`Montant maximum disponible: ${payoutEligibility.availableAmount.toFixed(2)} USD.`);
+  }
 
   await prisma.payout.create({
     data: {
       userId: currentUser.id,
       accountId,
-      amount: requiredDecimal(formData, "amount"),
+      amount: String(amount),
       currency: currency(formData, "currency"),
       payoutDate: requiredDate(formData, "payoutDate"),
-      status: requiredText(formData, "status") as PayoutStatus,
+      status,
       notes: optionalText(formData, "notes")
     }
   });

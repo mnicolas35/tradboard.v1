@@ -1,4 +1,5 @@
 import { getLatestUsdEurRate, getMonthlyProfitLossEur, getTotalProfitLossEur } from "@/lib/currency";
+import { calculateAvailableDrawdownFromCurrent } from "@/lib/drawdown";
 import { calculateEvaluationEligibility } from "@/lib/evaluation";
 import { calculatePayoutEligibility } from "@/lib/payout";
 import { prisma } from "@/lib/prisma";
@@ -196,10 +197,11 @@ export async function getDashboardData(): Promise<AppData> {
   });
 
   const accountSummaries: AccountSummary[] = accounts.map((account) => {
-    const currentResultUsd = getTotalProfitLossUsd(account.tradingDays);
+    const tradingResultUsd = getTotalProfitLossUsd(account.tradingDays);
     const accountSizeUsd = Number(account.accountSize);
-    const accountBalanceUsd = accountSizeUsd + currentResultUsd;
     const payoutsPaidUsd = getTotalPayoutsUsd(account.payouts);
+    const currentResultUsd = account.accountType === "FUNDED" ? tradingResultUsd - payoutsPaidUsd : tradingResultUsd;
+    const accountBalanceUsd = accountSizeUsd + currentResultUsd;
     const expensesUsd = getTotalExpensesUsd(account.expenses);
     const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
     const dailyResults = summarizeTradingDaysByDate(account.tradingDays, account);
@@ -209,7 +211,7 @@ export async function getDashboardData(): Promise<AppData> {
     const payoutDayResults = tradingDaysFrom(dailyResults, account.activationDate).map((day) => ({
       profitLossUsd: day.profitLossUsd
     }));
-    const evaluationEligibility = calculateEvaluationEligibility(currentResultUsd, evaluationDayResults, resolvedRule);
+    const evaluationEligibility = calculateEvaluationEligibility(tradingResultUsd, evaluationDayResults, resolvedRule);
     const payoutEligibility = calculatePayoutEligibility(
       currentResultUsd,
       payoutDayResults,
@@ -218,8 +220,22 @@ export async function getDashboardData(): Promise<AppData> {
     const split = (resolvedRule?.traderSharePercent ?? 100) / 100;
     const payoutsGrossUsd = payoutsPaidUsd;
     const payoutsNetUsd = payoutsGrossUsd * split;
-    const accountNetResultUsd = getNetResultUsd(currentResultUsd, expensesUsd, payoutsNetUsd);
+    const accountNetResultUsd = getNetResultUsd(tradingResultUsd, expensesUsd, payoutsNetUsd);
     const capitalCost = (account.purchasePrice ? Number(account.purchasePrice) : 0) + expensesUsd;
+
+    const drawdownLimit = resolvedRule?.maxDrawdown ?? null;
+    const lastDrawdownDay = account.tradingDays.find((day) => day.drawdownAtClose !== null);
+    const payoutsAfterLastDrawdown = lastDrawdownDay
+      ? account.payouts
+        .filter((payout) => (
+          payout.status === "PAID" &&
+          payout.createdAt > lastDrawdownDay.createdAt
+        ))
+        .reduce((sum, payout) => sum + Number(payout.amount), 0)
+      : 0;
+    const currentActualDrawdown = lastDrawdownDay?.drawdownAtClose !== undefined && lastDrawdownDay.drawdownAtClose !== null
+      ? Number(lastDrawdownDay.drawdownAtClose) - payoutsAfterLastDrawdown
+      : drawdownLimit ?? 0;
 
     return {
       id: account.id,
@@ -243,9 +259,8 @@ export async function getDashboardData(): Promise<AppData> {
       drawdownType: account.accountType === "FUNDED"
         ? (account.propFirmRule?.fundedDrawdownType ?? "EOD")
         : (account.propFirmRule?.evalDrawdownType ?? "EOD"),
-      currentDrawdown: account.tradingDays.find((d) => d.drawdownAtClose !== null)?.drawdownAtClose
-        ? Number(account.tradingDays.find((d) => d.drawdownAtClose !== null)!.drawdownAtClose)
-        : null,
+      currentDrawdown: calculateAvailableDrawdownFromCurrent(currentActualDrawdown, drawdownLimit),
+      currentActualDrawdown,
       currentResultUsd,
       currentResultEur: getTotalProfitLossEur(currentResultUsd, usdEurRateValue),
       accountBalanceUsd,
