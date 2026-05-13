@@ -13,6 +13,7 @@ import {
   closeFailedEvaluation,
   createPayout,
   deleteAccount,
+  deletePayout,
   resetEvaluation,
   updateAccountDetails,
   validateEvaluation
@@ -75,6 +76,12 @@ function tradingDaysFrom(days: TradingDaySummary[], startDate: string | null) {
   return days.filter((day) => day.tradeDate >= startDate);
 }
 
+function addDays(dateStr: string, days: number) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function currentDrawdownPoints(account: AccountSummary, days: TradingDaySummary[]) {
   const maxDrawdown = account.rule?.maxDrawdown ?? null;
   if (maxDrawdown === null || days.length === 0) {
@@ -111,14 +118,16 @@ function accountChartSeries(account: AccountSummary) {
   const payoutEvents = account.payouts
     .filter((payout) => payout.status === "PAID")
     .map((payout) => ({
-      date: payout.date,
+      date: addDays(payout.date, 1),
       createdAt: payout.createdAt ?? `${payout.date}T23:59:59.999Z`,
       amount: payout.amount,
       drawdownAtClose: null,
       type: "payout" as const
     }));
   const events = [...balanceEvents, ...payoutEvents].sort((a, b) => (
-    a.createdAt.localeCompare(b.createdAt) || a.date.localeCompare(b.date) || (a.type === "trade" ? -1 : 1)
+    a.date.localeCompare(b.date) ||
+    (a.type === b.type ? 0 : a.type === "payout" ? -1 : 1) ||
+    a.createdAt.localeCompare(b.createdAt)
   ));
   const maxDrawdown = account.rule?.maxDrawdown ?? null;
   let balance = account.accountSize;
@@ -496,6 +505,43 @@ export function AccountDetail({ account }: AccountDetailProps) {
             )}
           </div>
           <DetailField label="Jours tradés" value={ruleTradingDays.length} />
+        </div>
+        <div className="account-payout-history">
+          <div className="payout-history-header">
+            <span>Historique payouts</span>
+            <strong>{formatCurrency(account.payouts.filter((payout) => payout.status === "PAID").reduce((sum, payout) => sum + payout.amount, 0))}</strong>
+          </div>
+          {account.payouts.length === 0 ? (
+            <p className="payout-history-empty">Aucun payout enregistré.</p>
+          ) : (
+            <div className="payout-history-list">
+              {[...account.payouts]
+                .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+                .map((payout) => (
+                  <form
+                    className="payout-history-row"
+                    key={payout.id}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitAction(deletePayout, new FormData(event.currentTarget));
+                    }}
+                  >
+                    <input name="payoutId" type="hidden" value={payout.id} />
+                    <span>{new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${payout.date}T00:00:00`))}</span>
+                    <strong>{formatCurrency(payout.amount)}</strong>
+                    <button
+                      aria-label="Supprimer ce payout"
+                      className="row-icon-button delete"
+                      disabled={isSubmitting}
+                      title="Supprimer ce payout"
+                      type="submit"
+                    >
+                      🗑️
+                    </button>
+                  </form>
+                ))}
+            </div>
+          )}
         </div>
       </section>
 

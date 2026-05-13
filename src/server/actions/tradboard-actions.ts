@@ -755,6 +755,31 @@ export async function createPayout(formData: FormData) {
   refresh();
 }
 
+export async function deletePayout(formData: FormData) {
+  const currentUser = await getCurrentUser();
+  const payoutId = requiredText(formData, "payoutId");
+
+  const payout = await prisma.payout.findFirst({
+    where: { id: payoutId, userId: currentUser.id }
+  });
+
+  if (!payout) {
+    throw new Error("Payout introuvable pour cet utilisateur.");
+  }
+
+  const deletedPayout = await prisma.payout.delete({ where: { id: payoutId } });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Payout",
+    entityId: payoutId,
+    action: "DELETE",
+    before: deletedPayout,
+    metadata: { accountId: deletedPayout.accountId }
+  });
+
+  refresh();
+}
+
 export async function createExchangeRate(formData: FormData) {
   const currentUser = await getCurrentUser();
 
