@@ -906,6 +906,13 @@ tr:last-child td {
   font-family: inherit;
 }
 
+.growth-curve-x-label {
+  fill: var(--muted);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .growth-curve-empty {
   align-items: center;
   color: var(--muted);

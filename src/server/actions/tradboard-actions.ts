@@ -6,9 +6,9 @@ import type {
   AccountType,
   Currency,
   ExpenseType,
-  PayoutStatus,
-  Prisma
+  PayoutStatus
 } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { DrawdownType, PayoutRuleType, ThemePreference } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { isSupportedCurrency } from "@/lib/currency";
@@ -123,6 +123,44 @@ function accountStatus(formData: FormData): AccountStatus {
 
 function refresh() {
   revalidatePath("/");
+}
+
+function auditJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull;
+  }
+
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+async function writeAuditLog({
+  userId,
+  entityType,
+  entityId,
+  action,
+  before = null,
+  after = null,
+  metadata = null
+}: {
+  userId: string | null;
+  entityType: string;
+  entityId?: string | null;
+  action: string;
+  before?: unknown;
+  after?: unknown;
+  metadata?: unknown;
+}) {
+  await prisma.auditLog.create({
+    data: {
+      userId,
+      entityType,
+      entityId: entityId ?? null,
+      action,
+      before: auditJson(before),
+      after: auditJson(after),
+      metadata: auditJson(metadata)
+    }
+  });
 }
 
 function evaluationDays(tradingDays: Array<{ tradeDate: Date; profitLoss: Prisma.Decimal }>, startDate: Date | null) {
@@ -418,7 +456,7 @@ export async function createAccount(formData: FormData) {
   const activationDate =
     selectedAccountType === "FUNDED" ? requiredDate(formData, "activationDate") : null;
 
-  await prisma.account.create({
+  const createdAccount = await prisma.account.create({
     data: {
       userId: currentUser.id,
       propFirmId,
@@ -437,6 +475,13 @@ export async function createAccount(formData: FormData) {
       status: accountStatus(formData),
       notes: optionalText(formData, "notes")
     }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: createdAccount.id,
+    action: "CREATE",
+    after: createdAccount
   });
 
   refresh();
@@ -491,7 +536,7 @@ export async function createTradingDay(formData: FormData) {
     fundedBuffer
   );
 
-  await prisma.tradingDay.create({
+  const createdTrade = await prisma.tradingDay.create({
     data: {
       userId: currentUser.id,
       accountId,
@@ -504,6 +549,14 @@ export async function createTradingDay(formData: FormData) {
   });
 
   await recalculateAccountDrawdowns(accountId);
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "TradingDay",
+    entityId: createdTrade.id,
+    action: "CREATE",
+    after: createdTrade,
+    metadata: { accountId }
+  });
   refresh();
 }
 
@@ -523,8 +576,9 @@ export async function updateTradingDay(formData: FormData) {
   const tradingDayId = requiredText(formData, "tradingDayId");
 
   await assertOwnTradingDay(tradingDayId, currentUser.id);
+  const beforeTrade = await prisma.tradingDay.findUnique({ where: { id: tradingDayId } });
 
-  await prisma.tradingDay.update({
+  const updatedTrade = await prisma.tradingDay.update({
     where: { id: tradingDayId },
     data: {
       tradeDate: requiredDate(formData, "tradeDate"),
@@ -543,6 +597,15 @@ export async function updateTradingDay(formData: FormData) {
   if (tradingDay) {
     await recalculateAccountDrawdowns(tradingDay.accountId);
   }
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "TradingDay",
+    entityId: tradingDayId,
+    action: "UPDATE",
+    before: beforeTrade,
+    after: updatedTrade,
+    metadata: { accountId: tradingDay?.accountId ?? beforeTrade?.accountId ?? null }
+  });
   refresh();
 }
 
@@ -560,10 +623,18 @@ export async function deleteTradingDay(formData: FormData) {
     where: { id: tradingDayId },
     select: { accountId: true }
   });
-  await prisma.tradingDay.delete({ where: { id: tradingDayId } });
+  const deletedTrade = await prisma.tradingDay.delete({ where: { id: tradingDayId } });
   if (tradingDay) {
     await recalculateAccountDrawdowns(tradingDay.accountId);
   }
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "TradingDay",
+    entityId: tradingDayId,
+    action: "DELETE",
+    before: deletedTrade,
+    metadata: { accountId: tradingDay?.accountId ?? deletedTrade.accountId }
+  });
 
   refresh();
 }
@@ -574,7 +645,7 @@ export async function createExpense(formData: FormData) {
 
   await assertOwnAccount(accountId, currentUser.id);
 
-  await prisma.accountExpense.create({
+  const createdExpense = await prisma.accountExpense.create({
     data: {
       userId: currentUser.id,
       accountId,
@@ -584,6 +655,14 @@ export async function createExpense(formData: FormData) {
       expenseDate: requiredDate(formData, "expenseDate"),
       notes: optionalText(formData, "notes")
     }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "AccountExpense",
+    entityId: createdExpense.id,
+    action: "CREATE",
+    after: createdExpense,
+    metadata: { accountId }
   });
 
   refresh();
@@ -649,7 +728,7 @@ export async function createPayout(formData: FormData) {
     throw new Error(`Montant maximum disponible: ${payoutEligibility.availableAmount.toFixed(2)} USD.`);
   }
 
-  await prisma.payout.create({
+  const createdPayout = await prisma.payout.create({
     data: {
       userId: currentUser.id,
       accountId,
@@ -658,6 +737,18 @@ export async function createPayout(formData: FormData) {
       payoutDate: requiredDate(formData, "payoutDate"),
       status,
       notes: optionalText(formData, "notes")
+    }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Payout",
+    entityId: createdPayout.id,
+    action: "CREATE",
+    after: createdPayout,
+    metadata: {
+      accountId,
+      availableAmountBefore: payoutEligibility.availableAmount,
+      currentResultBefore: currentResultUsd
     }
   });
 
@@ -698,9 +789,18 @@ export async function archiveAccount(formData: FormData) {
   const accountId = requiredText(formData, "accountId");
 
   await assertOwnAccount(accountId, currentUser.id);
-  await prisma.account.update({
+  const beforeAccount = await prisma.account.findUnique({ where: { id: accountId } });
+  const updatedAccount = await prisma.account.update({
     where: { id: accountId },
     data: { status: "ARCHIVED" }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: accountId,
+    action: "ARCHIVE",
+    before: beforeAccount,
+    after: updatedAccount
   });
 
   refresh();
@@ -717,7 +817,7 @@ export async function closeAccount(formData: FormData) {
 
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId: currentUser.id },
-    select: { accountType: true }
+    select: { id: true, accountType: true, status: true }
   });
 
   if (!account) {
@@ -728,9 +828,17 @@ export async function closeAccount(formData: FormData) {
     throw new Error("Une evaluation ne peut etre fermee qu'en PASSED ou FAILED.");
   }
 
-  await prisma.account.update({
+  const updatedAccount = await prisma.account.update({
     where: { id: accountId },
     data: { status: closeStatus as AccountStatus }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: accountId,
+    action: "CLOSE",
+    before: account,
+    after: updatedAccount
   });
 
   refresh();
@@ -748,13 +856,22 @@ export async function updateAccountDetails(formData: FormData) {
     throw new Error("Compte introuvable pour cet utilisateur.");
   }
 
-  await prisma.account.update({
+  const beforeAccount = await prisma.account.findUnique({ where: { id: account.id } });
+  const updatedAccount = await prisma.account.update({
     where: { id: account.id },
     data: {
       accountNumber: requiredText(formData, "accountNumber"),
       purchaseDate: requiredDate(formData, "purchaseDate"),
       activationDate: account.accountType === "FUNDED" ? requiredDate(formData, "activationDate") : optionalDate(formData, "activationDate")
     }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: account.id,
+    action: "UPDATE",
+    before: beforeAccount,
+    after: updatedAccount
   });
 
   refresh();
@@ -766,7 +883,12 @@ export async function deleteAccount(formData: FormData) {
   const confirmationNumber = requiredText(formData, "confirmationNumber");
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId: currentUser.id },
-    select: { id: true, accountNumber: true }
+    include: {
+      tradingDays: true,
+      expenses: true,
+      payouts: true,
+      ruleOverride: true
+    }
   });
 
   if (!account) {
@@ -778,6 +900,13 @@ export async function deleteAccount(formData: FormData) {
   }
 
   await prisma.account.delete({ where: { id: accountId } });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: accountId,
+    action: "DELETE",
+    before: account
+  });
   refresh();
 }
 
@@ -812,7 +941,7 @@ export async function validateEvaluation(formData: FormData) {
   const activationCost = resolvedRule?.defaultActivationPrice ?? null;
   const activationDate = optionalDate(formData, "activationDate") ?? todayUtcDate();
 
-  await prisma.$transaction([
+  const [passedAccount, fundedAccount] = await prisma.$transaction([
     prisma.account.update({
       where: { id: account.id },
       data: { status: "PASSED" }
@@ -838,6 +967,15 @@ export async function validateEvaluation(formData: FormData) {
       }
     })
   ]);
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: account.id,
+    action: "VALIDATE_EVALUATION",
+    before: account,
+    after: passedAccount,
+    metadata: { createdFundedAccountId: fundedAccount.id, fundedAccount }
+  });
 
   refresh();
 }
@@ -899,7 +1037,16 @@ export async function resetEvaluation(formData: FormData) {
     })
   ];
 
-  await prisma.$transaction(transactions);
+  const [failedAccount, resetAccount] = await prisma.$transaction(transactions);
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: account.id,
+    action: "RESET_EVALUATION",
+    before: account,
+    after: failedAccount,
+    metadata: { createdResetAccount: resetAccount }
+  });
   refresh();
 }
 
@@ -931,9 +1078,17 @@ export async function closeFailedEvaluation(formData: FormData) {
     throw new Error("L'evaluation ne respecte pas les conditions d'echec.");
   }
 
-  await prisma.account.update({
+  const failedAccount = await prisma.account.update({
     where: { id: account.id },
     data: { status: "FAILED" }
+  });
+  await writeAuditLog({
+    userId: currentUser.id,
+    entityType: "Account",
+    entityId: account.id,
+    action: "FAIL_EVALUATION",
+    before: account,
+    after: failedAccount
   });
 
   refresh();

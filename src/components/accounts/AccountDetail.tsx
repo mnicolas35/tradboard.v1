@@ -101,32 +101,26 @@ function currentDrawdownPoints(account: AccountSummary, days: TradingDaySummary[
 }
 
 function accountChartSeries(account: AccountSummary) {
-  const balanceEvents = account.dailyResults.map((day) => ({
-    date: day.tradeDate,
-    amount: day.profitLossUsd,
+  const balanceEvents = account.tradeEntries.map((trade) => ({
+    date: trade.tradeDate,
+    createdAt: trade.createdAt,
+    amount: trade.profitLossUsd,
+    drawdownAtClose: trade.drawdownAtClose,
     type: "trade" as const
   }));
   const payoutEvents = account.payouts
     .filter((payout) => payout.status === "PAID")
     .map((payout) => ({
       date: payout.date,
+      createdAt: payout.createdAt ?? `${payout.date}T23:59:59.999Z`,
       amount: payout.amount,
+      drawdownAtClose: null,
       type: "payout" as const
     }));
   const events = [...balanceEvents, ...payoutEvents].sort((a, b) => (
-    a.date.localeCompare(b.date) || (a.type === "trade" ? -1 : 1)
+    a.createdAt.localeCompare(b.createdAt) || a.date.localeCompare(b.date) || (a.type === "trade" ? -1 : 1)
   ));
   const maxDrawdown = account.rule?.maxDrawdown ?? null;
-  const drawdownByDate = new Map<string, number>();
-  let runningTradeDrawdown = maxDrawdown ?? 0;
-
-  for (const trade of [...account.tradeEntries].sort((a, b) => (
-    a.tradeDate.localeCompare(b.tradeDate) || (a.createdAtTime ?? "").localeCompare(b.createdAtTime ?? "")
-  ))) {
-    runningTradeDrawdown = trade.drawdownAtClose ?? runningTradeDrawdown + trade.profitLossUsd;
-    drawdownByDate.set(trade.tradeDate, runningTradeDrawdown);
-  }
-
   let balance = account.accountSize;
   let currentDrawdown = maxDrawdown ?? 0;
   const balanceData: { date: string; value: number }[] = [];
@@ -136,7 +130,7 @@ function accountChartSeries(account: AccountSummary) {
   for (const event of events) {
     if (event.type === "trade") {
       balance += event.amount;
-      currentDrawdown = drawdownByDate.get(event.date) ?? currentDrawdown + event.amount;
+      currentDrawdown = event.drawdownAtClose ?? currentDrawdown + event.amount;
     } else {
       balance -= event.amount;
       currentDrawdown -= event.amount;

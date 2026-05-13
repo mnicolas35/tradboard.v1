@@ -96,9 +96,29 @@ model User {
   exchangeRates   ExchangeRate[]
   createdRules    PropFirmRule[]
   propFirmOrders  UserPropFirmOrder[]
+  auditLogs       AuditLog[]
 
   @@index([role])
   @@index([isActive])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  entityType String
+  entityId   String?
+  action     String
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model PropFirm {

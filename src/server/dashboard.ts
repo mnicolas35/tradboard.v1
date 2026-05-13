@@ -280,6 +280,7 @@ export async function getDashboardData(): Promise<AppData> {
         id: day.id,
         accountId: day.accountId,
         tradeDate: dateString(day.tradeDate),
+        createdAt: day.createdAt.toISOString(),
         createdAtTime: timeString(day.createdAt),
         profitLossUsd: Number(day.profitLoss),
         drawdownAtClose: day.drawdownAtClose !== null ? Number(day.drawdownAtClose) : null,
@@ -299,6 +300,7 @@ export async function getDashboardData(): Promise<AppData> {
         amount: Number(payout.amount),
         currency: payout.currency,
         date: dateString(payout.payoutDate),
+        createdAt: payout.createdAt.toISOString(),
         status: payout.status,
         notes: payout.notes
       }))

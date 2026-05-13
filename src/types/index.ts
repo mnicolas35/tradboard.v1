@@ -201,6 +201,7 @@ export type TradeEntrySummary = {
   id: string;
   accountId: string;
   tradeDate: string;
+  createdAt: string;
   createdAtTime: string | null;
   profitLossUsd: number;
   drawdownAtClose: number | null;
@@ -242,6 +243,7 @@ export type MoneyEventSummary = {
   amount: number;
   currency: string;
   date: string;
+  createdAt?: string;
   type?: string;
   status?: string;
   notes: string | null;

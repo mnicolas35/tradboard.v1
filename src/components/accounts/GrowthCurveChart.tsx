@@ -14,6 +14,13 @@ function formatYLabel(value: number): string {
   return `$${Math.round(value)}`;
 }
 
+function formatDayMonth(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+}
+
 function smoothCurvePath(pts: { x: number; y: number }[]): string {
   if (pts.length === 0) return "";
   if (pts.length === 1) return `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
@@ -133,7 +140,7 @@ export function GrowthCurveChart({
     const PAD_LEFT = 68;
     const PAD_RIGHT = 16;
     const PAD_TOP = 14;
-    const PAD_BOTTOM = 20;
+    const PAD_BOTTOM = 32;
     const PLOT_W = SVG_W - PAD_LEFT - PAD_RIGHT;
     const PLOT_H = SVG_H - PAD_TOP - PAD_BOTTOM;
 
@@ -197,6 +204,18 @@ export function GrowthCurveChart({
       const v = minV + ((maxV - minV) / (tickCount - 1)) * i;
       return { y: toY(v) };
     }).reverse();
+    const xTickCount = Math.min(6, data.length);
+    const xTicks = Array.from({ length: xTickCount }, (_, i) => {
+      const index = xTickCount <= 1
+        ? data.length - 1
+        : Math.round((i / (xTickCount - 1)) * (data.length - 1));
+      return {
+        x: toX(index),
+        y: bottomY,
+        label: formatDayMonth(data[index]!.date),
+        index
+      };
+    }).filter((tick, index, ticks) => index === 0 || tick.index !== ticks[index - 1]!.index);
 
     const drawdownRulePts = drawdownRuleData
       ? drawdownRuleData.map((v, i) => ({ x: toX(i), y: toY(v) }))
@@ -249,6 +268,7 @@ export function GrowthCurveChart({
       curvePath,
       fillPath,
       yTicks,
+      xTicks,
       drawdownRulePath,
       redLinePath,
       yLabels,
@@ -368,6 +388,28 @@ export function GrowthCurveChart({
               strokeWidth="1"
               strokeOpacity="0.7"
             />
+          ))}
+
+          {chart.xTicks.map((tick, i) => (
+            <g key={`x-tick-${i}`}>
+              <line
+                x1={tick.x}
+                x2={tick.x}
+                y1={tick.y}
+                y2={tick.y + 4}
+                stroke="var(--muted)"
+                strokeOpacity="0.65"
+                strokeWidth="1"
+              />
+              <text
+                x={tick.x}
+                y={tick.y + 15}
+                textAnchor="middle"
+                className="growth-curve-x-label"
+              >
+                {tick.label}
+              </text>
+            </g>
           ))}
 
           {/* Labels courants sur l'axe Y + pointillé rejoignant la courbe */}
