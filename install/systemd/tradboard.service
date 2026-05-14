@@ -1,0 +1,20 @@
+[Unit]
+Description=TradBoard v1 Next.js application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradboard
+Group=tradboard
+WorkingDirectory=/opt/tradboard
+EnvironmentFile=/opt/tradboard/.env.production
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start -- -H ${HOST} -p ${PORT}
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
