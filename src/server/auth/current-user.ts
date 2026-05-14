@@ -59,22 +59,16 @@ export async function getOptionalCurrentUser() {
 
   const [userId, expiresAt, signature] = session.split(".");
   if (!userId || !expiresAt || !signature || Number(expiresAt) < Date.now()) {
-    await destroySession();
     return null;
   }
 
   if (!verifySignature(userId, expiresAt, signature)) {
-    await destroySession();
     return null;
   }
 
   const user = await prisma.user.findFirst({
     where: { id: userId, isActive: true }
   });
-
-  if (!user) {
-    await destroySession();
-  }
 
   return user;
 }

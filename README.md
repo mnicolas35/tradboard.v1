@@ -17,8 +17,8 @@ TradBoard v1 est une application Next.js pour suivre des comptes de trading et p
 - Regles standard visibles par tous et regles custom prefixees `**`.
 - Preference theme utilisateur `LIGHT` / `DARK`.
 - Donnees utilisateur liees a `userId`.
-- Authentification encore mockee, isolee dans `src/server/auth/current-user.ts`.
-- Google OAuth et recuperation automatique USD/EUR prevus plus tard.
+- Authentification par session applicative, email/mot de passe et Google OAuth.
+- Recuperation automatique USD/EUR prevue plus tard.
 
 ## Prerequis
 
@@ -44,9 +44,35 @@ Configurer PostgreSQL :
 
 ```env
 DATABASE_URL="postgresql://tradboard:REMPLACER_MDP@localhost:5432/tradboard"
+APP_URL="http://localhost:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+AUTH_SECRET="REMPLACER_PAR_UN_SECRET_LONG_ALEATOIRE"
+AUTH_COOKIE_SECURE="false"
+GOOGLE_CLIENT_ID="REMPLACER_CLIENT_ID"
+GOOGLE_CLIENT_SECRET="REMPLACER_CLIENT_SECRET"
 ```
 
 Ne jamais committer `.env`.
+
+## Google OAuth
+
+Dans Google Cloud Console, creer un identifiant OAuth 2.0 de type application Web.
+
+Origines JavaScript autorisees :
+
+```text
+http://localhost:3000
+https://votre-domaine
+```
+
+URI de redirection autorises :
+
+```text
+http://localhost:3000/api/auth/google/callback
+https://votre-domaine/api/auth/google/callback
+```
+
+Reporter ensuite `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans `.env`.
 
 ## Prisma
 
@@ -111,18 +137,18 @@ src/server/
 src/types/
 ```
 
-## Auth mockee
+## Authentification
 
-La connexion visuelle est un mock cote client. Les donnees serveur utilisent `getCurrentUser()` dans `src/server/auth/current-user.ts`, qui cible `demo@tradboard.local`.
+La connexion utilise une session signee via `src/server/auth/current-user.ts`.
 
-Quand l'auth reelle sera ajoutee, remplacer ce point central par la session utilisateur. Les donnees privees restent deja scopees par `userId`.
+Les utilisateurs peuvent se connecter par email/mot de passe ou via Google OAuth. Les donnees privees restent scopees par `userId`.
 
 ## Multi-utilisateur
 
 - `User` conserve `role` avec `ADMIN` et `USER`.
 - Comptes, resultats journaliers, depenses, payouts et taux de change portent un `userId`.
 - Un utilisateur standard doit rester filtre sur ses donnees.
-- L'admin peut charger une vue globale cote lecture; les actions restent centrees sur l'utilisateur courant mocke.
+- L'admin peut charger une vue globale cote lecture; les actions restent centrees sur l'utilisateur courant.
 
 ## Regles et payouts
 

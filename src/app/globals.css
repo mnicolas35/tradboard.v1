@@ -1801,7 +1801,7 @@ textarea {
   padding: 24px;
 }
 
-.login-panel form {
+.login-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1811,6 +1811,11 @@ textarea {
   max-width: 430px;
   padding: 24px;
   width: 100%;
+}
+
+.login-card form {
+  display: grid;
+  gap: 16px;
 }
 
 .login-panel .flush-header {
@@ -1824,6 +1829,44 @@ textarea {
 
 .wide-button {
   width: 100%;
+}
+
+.google-button {
+  align-items: center;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  display: inline-flex;
+  gap: 10px;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.google-mark {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: #4285f4;
+  display: inline-flex;
+  font-weight: 900;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.auth-separator {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto 1fr;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.auth-separator span {
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 1100px) {

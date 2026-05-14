@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AuthPage } from "@/components/auth/AuthPage";
 import { TradBoardApp } from "@/components/TradBoardApp";
 import { getOptionalCurrentUser } from "@/server/auth/current-user";
@@ -9,7 +10,11 @@ export default async function Page() {
   const currentUser = await getOptionalCurrentUser();
 
   if (!currentUser) {
-    return <AuthPage />;
+    return (
+      <Suspense>
+        <AuthPage />
+      </Suspense>
+    );
   }
 
   const data = await getDashboardData();

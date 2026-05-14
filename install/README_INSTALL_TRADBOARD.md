@@ -39,6 +39,8 @@ DB_PASSWORD="remplacer_par_un_mot_de_passe_fort"
 APP_DIR="/opt/tradboard"
 APP_PORT="3000"
 APP_URL="http://10.0.0.10:3000"
+GOOGLE_CLIENT_ID="client_id_google"
+GOOGLE_CLIENT_SECRET="client_secret_google"
 ```
 
 `AUTH_SECRET` doit etre une chaine longue et aleatoire. Exemple de generation :
@@ -113,6 +115,8 @@ sudo APP_DIR="/opt/tradboard" \
   DB_USER="tradboard" \
   DB_PASSWORD="remplacer_par_un_mot_de_passe_fort" \
   AUTH_SECRET="coller_ici_la_valeur_openssl" \
+  GOOGLE_CLIENT_ID="client_id_google" \
+  GOOGLE_CLIENT_SECRET="client_secret_google" \
   ./scripts/install_app_server.sh
 ```
 
@@ -159,6 +163,43 @@ APP_DIR="/opt/tradboard" ./scripts/start_tradboard.sh
 APP_DIR="/opt/tradboard" ./scripts/stop_tradboard.sh
 APP_DIR="/opt/tradboard" ./scripts/restart_tradboard.sh
 APP_DIR="/opt/tradboard" ./scripts/status_tradboard.sh
+```
+
+## 6.1. Configuration Google OAuth
+
+Dans Google Cloud Console :
+
+1. Creer ou selectionner un projet.
+2. Configurer l'ecran de consentement OAuth.
+3. Creer un identifiant OAuth 2.0 de type `Application Web`.
+4. Ajouter les origines JavaScript autorisees :
+
+```text
+http://APP_SERVER_IP:3000
+https://votre-domaine
+```
+
+5. Ajouter les URI de redirection autorises :
+
+```text
+http://APP_SERVER_IP:3000/api/auth/google/callback
+https://votre-domaine/api/auth/google/callback
+```
+
+6. Reporter les valeurs dans `/opt/tradboard/.env.production` :
+
+```env
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+APP_URL="https://votre-domaine"
+NEXT_PUBLIC_APP_URL="https://votre-domaine"
+AUTH_COOKIE_SECURE="true"
+```
+
+Apres modification :
+
+```bash
+sudo systemctl restart tradboard
 ```
 
 ## 7. Requetes PostgreSQL
