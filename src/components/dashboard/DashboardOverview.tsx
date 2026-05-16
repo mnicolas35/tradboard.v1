@@ -117,6 +117,10 @@ function compactAmount(value: number) {
   return String(value);
 }
 
+function formatOptionalCurrency(value: number | null, currency = "USD") {
+  return value === null ? "--" : formatCurrency(value, currency);
+}
+
 const marketInstruments = [
   {
     id: "nasdaq",
@@ -398,10 +402,39 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
   const paidPayouts = payoutHistoryAccounts.flatMap((account) => (
     account.payouts
       .filter((payout) => payout.status === "PAID")
-      .map((payout) => ({ ...payout, propFirmId: account.propFirmId, propFirmName: account.propFirmName }))
+      .map((payout) => {
+        const traderShare = account.payoutsGrossUsd > 0
+          ? account.payoutsNetUsd / account.payoutsGrossUsd
+          : (account.rule?.traderSharePercent ?? 100) / 100;
+
+        return {
+          ...payout,
+          amountNet: payout.amount * traderShare,
+          propFirmId: account.propFirmId,
+          propFirmName: account.propFirmName
+        };
+      })
   ));
+  const payoutNetAccounts = [...new Map(
+    [...payoutHistoryAccounts, ...payoutPossibleAccounts].map((account) => [account.id, account])
+  ).values()];
+  const payoutNetRows = payoutNetAccounts
+    .map((account) => ({
+      id: account.id,
+      label: `${account.propFirmAcronym} ${accountLabel(account)}`,
+      accountCost: account.accountCostUsd,
+      payoutGross: account.payoutsGrossUsd,
+      payoutNet: account.payoutsNetUsd,
+      payoutNetEur: data.metrics.latestUsdEurRate ? account.payoutsNetUsd * data.metrics.latestUsdEurRate.rate : null,
+      isEligible: account.payoutEligibility.isEligible && account.payoutEligibility.availableAmount > 0
+    }))
+    .filter((row) => row.payoutGross > 0 || row.payoutNet > 0 || row.isEligible)
+    .sort((a, b) => Number(b.isEligible) - Number(a.isEligible) || b.payoutNet - a.payoutNet || a.label.localeCompare(b.label));
+  const payoutNetTotal = sum(payoutNetRows.map((row) => row.payoutNet));
+  const payoutNetTotalEur = data.metrics.latestUsdEurRate ? payoutNetTotal * data.metrics.latestUsdEurRate.rate : null;
   const annualPayouts = sum(paidPayouts.filter((payout) => isInYear(payout.date, year)).map((payout) => payout.amount));
   const monthlyPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, year, month)).map((payout) => payout.amount));
+  const monthlyNetPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, year, month)).map((payout) => payout.amountNet));
   const parentAccountIds = new Set(data.accounts.map((account) => account.parentAccountId).filter(Boolean));
   const costCarrierAccounts = data.accounts.filter((account) => !parentAccountIds.has(account.id));
   const costLines = costCarrierAccounts.flatMap((account) => (
@@ -426,6 +459,24 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
       return rows;
     }, new Map())
     .values()]
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const monthlyPayoutMap = new Map<string, { name: string; invested: number; payoutNet: number }>();
+  monthlyCostsByPropFirm.forEach((row) => {
+    monthlyPayoutMap.set(row.name, { name: row.name, invested: row.amount, payoutNet: 0 });
+  });
+  paidPayouts
+    .filter((payout) => isInMonth(payout.date, year, month))
+    .forEach((payout) => {
+      const current = monthlyPayoutMap.get(payout.propFirmName) ?? {
+        name: payout.propFirmName,
+        invested: 0,
+        payoutNet: 0
+      };
+      monthlyPayoutMap.set(payout.propFirmName, { ...current, payoutNet: current.payoutNet + payout.amountNet });
+    });
+  const monthlyPayoutRows = [...monthlyPayoutMap.values()]
+    .filter((row) => row.invested > 0 || row.payoutNet > 0)
+    .map((row) => ({ ...row, difference: row.payoutNet - row.invested }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const annualBalance = annualPayouts - annualCosts;
   const monthlyBalance = monthlyPayouts - monthlyCosts;
@@ -787,6 +838,78 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                 ))
               )}
             </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="global-summary-grid">
+        <section className="panel global-summary-card">
+          <div className="global-summary-head">
+            <h2>Payout Net</h2>
+            <strong>{formatCurrency(payoutNetTotal)}</strong>
+          </div>
+          <div className="global-summary-table payout-net-table">
+            <div className="global-summary-row header">
+              <span>Comptes</span>
+              <span>Cout du compte</span>
+              <span>Payout pris</span>
+              <span>Payout net</span>
+              <span>Net EUR</span>
+            </div>
+            {payoutNetRows.length === 0 ? (
+              <p className="global-summary-empty">Aucun payout net pris.</p>
+            ) : (
+              payoutNetRows.map((row) => (
+                <div className="global-summary-row" key={row.id}>
+                  <span>{row.label}</span>
+                  <strong>{formatCurrency(row.accountCost)}</strong>
+                  <strong>{formatCurrency(row.payoutGross)}</strong>
+                  <strong className="tone-positive">{formatCurrency(row.payoutNet)}</strong>
+                  <strong>{formatOptionalCurrency(row.payoutNetEur, "EUR")}</strong>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="global-summary-foot">
+            <span>Total net EUR</span>
+            <strong>{formatOptionalCurrency(payoutNetTotalEur, "EUR")}</strong>
+          </div>
+        </section>
+
+        <section className="panel global-summary-card">
+          <div className="global-summary-head">
+            <h2>Payout mensuel</h2>
+            <strong>{formatCurrency(monthlyNetPayouts)}</strong>
+          </div>
+          <div className="global-summary-table monthly-payout-table">
+            <div className="global-summary-row header">
+              <span>Mois</span>
+              <span>Propfirm</span>
+              <span>Investi</span>
+              <span>Payout net</span>
+              <span>Différence</span>
+            </div>
+            {monthlyPayoutRows.length === 0 ? (
+              <p className="global-summary-empty">Aucun payout net mensuel.</p>
+            ) : (
+              monthlyPayoutRows.map((row) => (
+                <div className="global-summary-row" key={row.name}>
+                  <span>{currentMonth.label}</span>
+                  <span>{row.name}</span>
+                  <strong>{formatCurrency(row.invested)}</strong>
+                  <strong className="tone-positive">{formatCurrency(row.payoutNet)}</strong>
+                  <strong className={row.difference >= 0 ? "tone-positive" : "tone-negative"}>
+                    {formatCurrency(row.difference)}
+                  </strong>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="global-summary-foot">
+            <span>Total différence</span>
+            <strong className={monthlyNetPayouts - monthlyCosts >= 0 ? "tone-positive" : "tone-negative"}>
+              {formatCurrency(monthlyNetPayouts - monthlyCosts)}
+            </strong>
           </div>
         </section>
       </div>

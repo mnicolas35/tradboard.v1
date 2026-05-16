@@ -522,6 +522,108 @@ h2 {
   font-size: 1rem;
 }
 
+.global-summary-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.global-summary-card {
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-width: 0;
+  padding: 12px;
+}
+
+.global-summary-head,
+.global-summary-foot {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.global-summary-head h2 {
+  font-size: 0.86rem;
+  margin: 0;
+}
+
+.global-summary-head strong {
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.global-summary-foot {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  padding-top: 7px;
+}
+
+.global-summary-foot strong {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.global-summary-table {
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.global-summary-row {
+  align-items: center;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.payout-net-table .global-summary-row {
+  grid-template-columns: minmax(58px, 1.15fr) minmax(52px, 0.85fr) minmax(52px, 0.85fr) minmax(52px, 0.85fr) minmax(52px, 0.8fr);
+}
+
+.monthly-payout-table .global-summary-row {
+  grid-template-columns: minmax(46px, 0.7fr) minmax(58px, 1fr) repeat(3, minmax(52px, 0.85fr));
+}
+
+.global-summary-row.header {
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.global-summary-row:not(.header) {
+  border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+  font-size: 0.66rem;
+  min-height: 18px;
+  padding-top: 2px;
+}
+
+.global-summary-row span,
+.global-summary-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-summary-row strong {
+  font-size: 0.66rem;
+  text-align: right;
+}
+
+.global-summary-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
 .global-analytics-panel {
   display: grid;
   gap: 16px;
@@ -2789,6 +2891,7 @@ select option {
   .compact-metrics,
   .detail-grid,
   .global-dashboard-grid,
+  .global-summary-grid,
   .kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2832,6 +2935,7 @@ select option {
   .compact-metrics,
   .detail-grid,
   .global-dashboard-grid,
+  .global-summary-grid,
   .kpi-row,
   .form-grid {
     grid-template-columns: 1fr;
