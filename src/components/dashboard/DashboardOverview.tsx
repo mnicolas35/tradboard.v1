@@ -8,6 +8,30 @@ type DashboardOverviewProps = {
   data: AppData;
 };
 
+const selectedMarketSymbolsStorageKey = "tradboard.dashboard.selectedMarketSymbols";
+
+function readStoredSelectedMarketSymbols() {
+  try {
+    const rawValue = window.localStorage.getItem(selectedMarketSymbolsStorageKey);
+    if (!rawValue) {
+      return null;
+    }
+
+    const value = JSON.parse(rawValue);
+    return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeSelectedMarketSymbols(symbols: string[]) {
+  try {
+    window.localStorage.setItem(selectedMarketSymbolsStorageKey, JSON.stringify(symbols));
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
+}
+
 function currentPeriod() {
   const now = new Date();
   return {
@@ -337,6 +361,7 @@ function formatMarketPrice(value: number | null) {
 export function DashboardOverview({ data }: DashboardOverviewProps) {
   const [watchedMarkets, setWatchedMarkets] = useState<MarketWatchItemSummary[]>(data.marketWatchlist);
   const [selectedMarketSymbols, setSelectedMarketSymbols] = useState<string[]>(data.marketWatchlist.map((item) => item.symbol));
+  const [hasRestoredSelectedMarkets, setHasRestoredSelectedMarkets] = useState(false);
   const [marketRange, setMarketRange] = useState<MarketRange>("7d");
   const [marketSeriesBySymbol, setMarketSeriesBySymbol] = useState<Record<string, MarketSeries>>({});
   const [marketSearchQuery, setMarketSearchQuery] = useState("");
@@ -506,9 +531,23 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     });
 
   useEffect(() => {
+    const availableSymbols = data.marketWatchlist.map((item) => item.symbol);
+    const storedSymbols = readStoredSelectedMarketSymbols();
+
     setWatchedMarkets(data.marketWatchlist);
-    setSelectedMarketSymbols(data.marketWatchlist.map((item) => item.symbol));
+    setSelectedMarketSymbols(storedSymbols === null
+      ? availableSymbols
+      : storedSymbols.filter((symbol) => availableSymbols.includes(symbol)));
+    setHasRestoredSelectedMarkets(true);
   }, [data.marketWatchlist]);
+
+  useEffect(() => {
+    if (!hasRestoredSelectedMarkets) {
+      return;
+    }
+
+    storeSelectedMarketSymbols(selectedMarketSymbols);
+  }, [hasRestoredSelectedMarkets, selectedMarketSymbols]);
 
   useEffect(() => {
     if (watchedSymbols.length === 0) {
@@ -525,8 +564,13 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     fetch(`/api/market/series?${params.toString()}`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("series")))
       .then((payload: { series?: MarketSeries[] }) => {
-        setMarketSeriesBySymbol(Object.fromEntries((payload.series ?? []).map((series) => [series.symbol, series])));
-        setMarketStatus(null);
+        const series = payload.series ?? [];
+        setMarketSeriesBySymbol(Object.fromEntries(series.map((item) => [item.symbol, item])));
+        setMarketStatus(
+          series.length > 0 && series.every((item) => item.price === null && item.points.length === 0)
+            ? "Flux Yahoo indisponible."
+            : null
+        );
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -888,8 +932,6 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
                     <div className="market-card-head">
                       <div>
                         <strong>{instrument.displaySymbol}</strong>
-                        <span className="market-card-name">{instrument.name}</span>
-                        <small>{instrument.source} · {instrument.feedSymbol}</small>
                       </div>
                       <div className="market-price-block">
                         <strong>{formatMarketPrice(instrument.price)}</strong>

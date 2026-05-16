@@ -18,6 +18,7 @@ type AccountPerformanceCalendarProps = {
   fundedBuffer: number | null;
   accountType: "EVALUATION" | "FUNDED";
   ruleDrawdown: number | null;
+  onSelectedDateChange?: (date: string) => void;
 };
 
 function getMonthDays(reference: Date) {
@@ -73,7 +74,8 @@ export function AccountPerformanceCalendar({
   drawdownLimit,
   fundedBuffer,
   accountType,
-  ruleDrawdown
+  ruleDrawdown,
+  onSelectedDateChange
 }: AccountPerformanceCalendarProps) {
   const router = useRouter();
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
@@ -115,6 +117,11 @@ export function AccountPerformanceCalendar({
 
   function moveMonth(offset: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function selectDate(date: string) {
+    setSelectedDate(date);
+    onSelectedDateChange?.(date);
   }
 
   function openEditTrade(trade: TradeEntrySummary) {
@@ -174,19 +181,23 @@ export function AccountPerformanceCalendar({
           const tone = value === undefined || value === 0 ? "neutral" : value > 0 ? "positive" : "negative";
           const isSelected = cell.iso !== null && cell.iso === selectedDate;
 
-          return cell.iso ? (
+          if (!cell.iso) {
+            return <div className="calendar-cell neutral" key={`empty-${index}`} />;
+          }
+
+          const isoDate = cell.iso;
+
+          return (
             <button
               aria-pressed={isSelected}
               className={`calendar-cell calendar-cell-button ${tone}${isSelected ? " selected" : ""}`}
-              key={cell.iso}
+              key={isoDate}
               type="button"
-              onClick={() => setSelectedDate(cell.iso)}
+              onClick={() => selectDate(isoDate)}
             >
               <strong>{cell.day}</strong>
               {value !== undefined ? <span>{formatCurrency(value)}</span> : null}
             </button>
-          ) : (
-            <div className="calendar-cell neutral" key={`empty-${index}`} />
           );
         })}
       </div>

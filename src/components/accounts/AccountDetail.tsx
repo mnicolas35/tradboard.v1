@@ -288,6 +288,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [chartRange, setChartRange] = useState<ChartRange>("all");
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const isPositive = account.accountBalanceUsd >= account.accountSize;
   const ruleDrawdown = account.rule?.maxDrawdown ?? null;
   const drawdownLimit = ruleDrawdown;
@@ -623,12 +624,19 @@ export function AccountDetail({ account }: AccountDetailProps) {
             fundedBuffer={account.accountType === "FUNDED" ? (account.rule?.buffer ?? null) : null}
             accountType={account.accountType as "EVALUATION" | "FUNDED"}
             ruleDrawdown={account.rule?.maxDrawdown ?? null}
+            onSelectedDateChange={setSelectedCalendarDate}
           />
         </div>
       </section>
 
       <Modal isOpen={modal === "trade"} title="Add trading day" onClose={() => setModal(null)}>
-        <TradingDayForm accounts={[account]} hideAccountSelect onCancel={() => setModal(null)} onSuccess={() => setModal(null)} />
+        <TradingDayForm
+          accounts={[account]}
+          defaultTradeDate={selectedCalendarDate}
+          hideAccountSelect
+          onCancel={() => setModal(null)}
+          onSuccess={() => setModal(null)}
+        />
       </Modal>
 
       <Modal isOpen={modal === "payout"} title="Effectuer un payout" onClose={() => setModal(null)}>

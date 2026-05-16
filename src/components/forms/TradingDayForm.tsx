@@ -10,6 +10,7 @@ import { Field, TextArea } from "./FormControls";
 type TradingDayFormProps = {
   accounts: AccountSummary[];
   hideAccountSelect?: boolean;
+  defaultTradeDate?: string | null;
   onCancel?: () => void;
   onSuccess?: () => void;
 };
@@ -42,7 +43,7 @@ function calcDrawdown(
   return suggested === null ? "" : String(suggested);
 }
 
-export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, onSuccess }: TradingDayFormProps) {
+export function TradingDayForm({ accounts, hideAccountSelect = false, defaultTradeDate, onCancel, onSuccess }: TradingDayFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -123,7 +124,7 @@ export function TradingDayForm({ accounts, hideAccountSelect = false, onCancel, 
             </select>
           </label>
         )}
-        <Field label="Date" name="tradeDate" required type="date" defaultValue={todayInputValue()} />
+        <Field label="Date" name="tradeDate" required type="date" defaultValue={defaultTradeDate ?? todayInputValue()} />
         <label className="form-field">
           <span>Gain / perte USD</span>
           <input
