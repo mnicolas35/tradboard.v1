@@ -91,6 +91,7 @@ export type AppData = {
   recentTradingDays: TradingDaySummary[];
   calendarTradingDays: TradingDaySummary[];
   exchangeRates: ExchangeRateSummary[];
+  marketWatchlist: MarketWatchItemSummary[];
 };
 
 export type UserSummary = {
@@ -152,6 +153,7 @@ export type AccountSummary = {
   payoutsGrossUsd: number;
   payoutsNetUsd: number;
   expensesUsd: number;
+  accountCostUsd: number;
   netResultUsd: number;
   netResultEur: number | null;
   roiPercent: number | null;
@@ -182,6 +184,7 @@ export type AccountSummary = {
   dailyResults: TradingDaySummary[];
   tradeEntries: TradeEntrySummary[];
   expenses: MoneyEventSummary[];
+  costHistory: AccountCostLineSummary[];
   payouts: MoneyEventSummary[];
 };
 
@@ -238,6 +241,25 @@ export type ExchangeRateSummary = {
   source: string | null;
 };
 
+export type MarketWatchItemSummary = {
+  id: string;
+  query: string;
+  symbol: string;
+  displaySymbol: string;
+  name: string;
+  exchange: string | null;
+  quoteType: string | null;
+  instrumentType: string;
+  contractRoot: string | null;
+  activeContractCode: string | null;
+  activeContractMonth: number | null;
+  activeContractYear: number | null;
+  feedSymbol: string;
+  source: string;
+  color: string;
+  sortOrder: number;
+};
+
 export type MoneyEventSummary = {
   id: string;
   amount: number;
@@ -246,5 +268,16 @@ export type MoneyEventSummary = {
   createdAt?: string;
   type?: string;
   status?: string;
+  notes: string | null;
+};
+
+export type AccountCostLineSummary = {
+  id: string;
+  sourceAccountId: string;
+  label: string;
+  amount: number;
+  currency: string;
+  date: string;
+  type: string;
   notes: string | null;
 };

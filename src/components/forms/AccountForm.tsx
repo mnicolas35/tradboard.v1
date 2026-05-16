@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { sortPropFirmRules } from "@/lib/rule-sort";
 import { createAccount } from "@/server/actions/tradboard-actions";
 import type { AppData } from "@/types";
 import {
@@ -45,7 +46,11 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
   const [selectedAccountType, setSelectedAccountType] = useState("EVALUATION");
   const [promoPercent, setPromoPercent] = useState("");
 
-  const filteredRules = propFirmRules.filter((rule) => rule.propFirmId === selectedPropFirmId);
+  const filteredRules = sortPropFirmRules(
+    propFirmRules.filter((rule) => rule.propFirmId === selectedPropFirmId),
+    selectedAccountType,
+    "size-then-drawdown"
+  );
   const selectedRule = propFirmRules.find((rule) => rule.id === selectedRuleId) ?? null;
   const baseCost = selectedRule?.defaultPurchasePrice ?? 0;
   const promoValue = Number(promoPercent || 0);

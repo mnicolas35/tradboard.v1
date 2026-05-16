@@ -130,7 +130,7 @@ export function Sidebar({ accounts, archivedAccounts, propFirmOrders, currentVie
     (account) => account.accountType === "EVALUATION" && (account.status === "FAILED" || account.status === "CLOSED")
   );
   const closedFunded = archivedAccounts.filter(
-    (account) => account.accountType === "FUNDED" && (account.status === "CLOSED" || account.status === "ARCHIVED")
+    (account) => account.accountType === "FUNDED" && (account.status === "CLOSED" || account.status === "FAILED" || account.status === "ARCHIVED")
   );
   const passedGroups = groupAccounts(passedEvaluations, propFirmOrders);
   const failedGroups = groupAccounts(failedEvaluations, propFirmOrders);

@@ -853,6 +853,10 @@ export async function closeAccount(formData: FormData) {
     throw new Error("Une evaluation ne peut etre fermee qu'en PASSED ou FAILED.");
   }
 
+  if (account.accountType === "FUNDED" && closeStatus === "PASSED") {
+    throw new Error("Un compte funded ne peut pas etre ferme en PASSED.");
+  }
+
   const updatedAccount = await prisma.account.update({
     where: { id: accountId },
     data: { status: closeStatus as AccountStatus }
@@ -948,7 +952,7 @@ export async function validateEvaluation(formData: FormData) {
   }
 
   if (!account.propFirmRule) {
-    throw new Error("Regle introuvable pour cette evaluation.");
+    throw new Error("Regle introuvable pour ce compte.");
   }
 
   const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
@@ -963,7 +967,10 @@ export async function validateEvaluation(formData: FormData) {
     throw new Error(eligibility.reasons[0] ?? "L'evaluation ne respecte pas encore sa regle.");
   }
 
-  const activationCost = resolvedRule?.defaultActivationPrice ?? null;
+  const activationCost = optionalDecimal(formData, "activationCost") ?? resolvedRule?.defaultActivationPrice ?? null;
+  if (activationCost !== null && Number(activationCost) < 0) {
+    throw new Error("Le cout d'activation ne peut pas etre negatif.");
+  }
   const activationDate = optionalDate(formData, "activationDate") ?? todayUtcDate();
 
   const [passedAccount, fundedAccount] = await prisma.$transaction([
@@ -986,7 +993,7 @@ export async function validateEvaluation(formData: FormData) {
         status: "ACTIVE",
         purchaseDate: activationDate,
         purchasePrice: activationCost,
-        promoUsed: activationCost ? "Activation" : null,
+        promoUsed: activationCost !== null ? (Number(activationCost) === 0 ? "Activation promo" : "Activation") : null,
         activationDate,
         notes: optionalText(formData, "notes")
       }
@@ -1009,32 +1016,70 @@ export async function resetEvaluation(formData: FormData) {
   const currentUser = await getCurrentUser();
   const accountId = requiredText(formData, "accountId");
   const account = await prisma.account.findFirst({
-    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION", status: "ACTIVE" },
-    include: { propFirmRule: true, ruleOverride: true, tradingDays: true }
+    where: {
+      id: accountId,
+      userId: currentUser.id,
+      accountType: { in: ["EVALUATION", "FUNDED"] },
+      status: "ACTIVE"
+    },
+    include: {
+      propFirmRule: true,
+      ruleOverride: true,
+      tradingDays: { orderBy: [{ tradeDate: "desc" }, { createdAt: "desc" }] },
+      payouts: true
+    }
   });
 
   if (!account) {
-    throw new Error("Evaluation introuvable pour cet utilisateur.");
+    throw new Error("Compte introuvable pour cet utilisateur.");
   }
 
   if (!account.propFirmRule) {
     throw new Error("Regle introuvable pour cette evaluation.");
   }
 
-  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
   const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
-  const eligibility = calculateEvaluationEligibility(
-    currentResultUsd,
-    evaluationDays(account.tradingDays, account.purchaseDate),
-    resolvedRule
-  );
+  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
 
-  if (!eligibility.isFailed) {
-    throw new Error("L'evaluation ne respecte pas les conditions de reset.");
+  if (account.accountType === "EVALUATION") {
+    const eligibility = calculateEvaluationEligibility(
+      currentResultUsd,
+      evaluationDays(account.tradingDays, account.purchaseDate),
+      resolvedRule
+    );
+
+    if (!eligibility.isFailed) {
+      throw new Error("L'evaluation ne respecte pas les conditions de reset.");
+    }
+  } else {
+    const ruleFundedResetPrice = resolvedRule?.defaultFundedResetPrice ?? null;
+    if (ruleFundedResetPrice === null || ruleFundedResetPrice <= 0) {
+      throw new Error("Ce compte funded ne peut pas etre reset.");
+    }
+
+    const drawdownLimit = resolvedRule?.maxDrawdown ?? null;
+    const lastDrawdownDay = account.tradingDays.find((day) => day.drawdownAtClose !== null);
+    const payoutsAfterLastDrawdown = lastDrawdownDay
+      ? account.payouts
+        .filter((payout) => payout.status === "PAID" && payout.createdAt > lastDrawdownDay.createdAt)
+        .reduce((sum, payout) => sum + Number(payout.amount), 0)
+      : 0;
+    const currentActualDrawdown = lastDrawdownDay?.drawdownAtClose !== undefined && lastDrawdownDay.drawdownAtClose !== null
+      ? Number(lastDrawdownDay.drawdownAtClose) - payoutsAfterLastDrawdown
+      : drawdownLimit ?? 0;
+    const currentDrawdown = drawdownLimit === null ? currentActualDrawdown : Math.min(currentActualDrawdown, drawdownLimit);
+
+    if (currentDrawdown > 0) {
+      throw new Error("Le funded ne respecte pas les conditions de reset.");
+    }
   }
 
-  const resetCost = resolvedRule?.defaultResetPrice ?? null;
-  const accumulatedCost = Number(account.purchasePrice ?? 0) + (resetCost ?? 0);
+  const defaultResetCost = account.accountType === "FUNDED" ? resolvedRule?.defaultFundedResetPrice ?? null : resolvedRule?.defaultResetPrice ?? null;
+  const resetCost = optionalDecimal(formData, "resetCost") ?? defaultResetCost;
+  if (resetCost !== null && Number(resetCost) < 0) {
+    throw new Error("Le cout de reset ne peut pas etre negatif.");
+  }
+  const accumulatedCost = Number(account.purchasePrice ?? 0) + Number(resetCost ?? 0);
   const resetDate = todayUtcDate();
   const transactions: Prisma.PrismaPromise<unknown>[] = [
     prisma.account.update({
@@ -1051,12 +1096,13 @@ export async function resetEvaluation(formData: FormData) {
         accountNumber: requiredText(formData, "accountNumber"),
         platform: account.platform,
         currency: account.currency,
-        accountType: "EVALUATION" as AccountType,
+        accountType: account.accountType as AccountType,
         accountSize: account.accountSize,
         status: "ACTIVE" as AccountStatus,
         purchaseDate: resetDate,
+        activationDate: account.accountType === "FUNDED" ? resetDate : null,
         purchasePrice: accumulatedCost > 0 ? accumulatedCost : null,
-        promoUsed: resetCost ? "Reset" : null,
+        promoUsed: resetCost !== null ? (Number(resetCost) === 0 ? "Reset promo" : "Reset") : null,
         notes: optionalText(formData, "notes")
       }
     })
@@ -1067,7 +1113,7 @@ export async function resetEvaluation(formData: FormData) {
     userId: currentUser.id,
     entityType: "Account",
     entityId: account.id,
-    action: "RESET_EVALUATION",
+    action: account.accountType === "FUNDED" ? "RESET_FUNDED" : "RESET_EVALUATION",
     before: account,
     after: failedAccount,
     metadata: { createdResetAccount: resetAccount }
@@ -1175,7 +1221,7 @@ export async function updateThemePreference(formData: FormData) {
   const currentUser = await getCurrentUser();
   const theme = requiredText(formData, "themePreference") as ThemePreference;
 
-  if (theme !== "LIGHT" && theme !== "DARK") {
+  if (theme !== "LIGHT" && theme !== "DARK" && theme !== "DARKY") {
     throw new Error("Theme invalide.");
   }
 
@@ -1203,7 +1249,7 @@ export async function updatePropFirm(formData: FormData) {
   });
 
   if (currentUser.role !== "ADMIN") {
-    // Non-admins may edit shared metadata during the mock-auth phase, but not delete.
+    // Non-admins may edit shared metadata, but not delete it.
   }
 
   refresh();

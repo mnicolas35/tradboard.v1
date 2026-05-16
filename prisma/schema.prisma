@@ -94,6 +94,7 @@ model User {
   expenses        AccountExpense[]
   payouts         Payout[]
   exchangeRates   ExchangeRate[]
+  marketWatchlist MarketWatchItem[]
   createdRules    PropFirmRule[]
   propFirmOrders  UserPropFirmOrder[]
   auditLogs       AuditLog[]
@@ -337,4 +338,32 @@ model ExchangeRate {
   @@index([userId])
   @@index([baseCurrency, targetCurrency])
   @@index([rateDate])
+}
+
+model MarketWatchItem {
+  id                  String   @id @default(cuid())
+  userId              String
+  query               String
+  symbol              String
+  displaySymbol       String
+  name                String
+  exchange            String?
+  quoteType           String?
+  instrumentType      String
+  contractRoot        String?
+  activeContractCode  String?
+  activeContractMonth Int?
+  activeContractYear  Int?
+  feedSymbol          String
+  source              String   @default("YAHOO")
+  color               String
+  sortOrder           Int
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
+  @@index([symbol])
+  @@index([sortOrder])
 }

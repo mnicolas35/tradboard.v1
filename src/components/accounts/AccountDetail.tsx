@@ -68,6 +68,10 @@ function todayDateValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatDisplayDate(date: string) {
+  return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${date}T00:00:00`));
+}
+
 function tradingDaysFrom(days: TradingDaySummary[], startDate: string | null) {
   if (!startDate) {
     return days;
@@ -297,10 +301,16 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const targetValue = ruleTarget === null ? null : `${formatCurrency(account.currentResultUsd)} / ${formatCurrency(ruleTarget)}`;
   const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
   const payoutValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.availableAmount) : "-";
-  const closeOptions = account.accountType === "EVALUATION" ? ["FAILED", "PASSED"] : ["FAILED", "PASSED", "CLOSED"];
+  const accountCostTotal = account.costHistory.reduce((sum, line) => sum + line.amount, 0);
+  const closeOptions = account.accountType === "EVALUATION" ? ["FAILED", "PASSED"] : ["FAILED", "CLOSED"];
   const isActiveEvaluation = account.accountType === "EVALUATION" && account.status === "ACTIVE";
+  const isActiveFunded = account.accountType === "FUNDED" && account.status === "ACTIVE";
+  const isCrashedFunded = isActiveFunded && account.currentDrawdown !== null && account.currentDrawdown <= 0;
+  const fundedResetPrice = account.rule?.defaultFundedResetPrice ?? 0;
   const canActivateEvaluation = isActiveEvaluation && account.evaluationEligibility.isEligible;
   const canFailEvaluation = isActiveEvaluation && account.evaluationEligibility.isFailed;
+  const canResetFunded = isCrashedFunded && fundedResetPrice > 0;
+  const resetCostDefault = account.accountType === "FUNDED" ? fundedResetPrice : account.rule?.defaultResetPrice ?? 0;
   const tradingDaysStartDate = account.accountType === "FUNDED" ? account.activationDate : account.purchaseDate;
   const ruleTradingDays = tradingDaysFrom(account.dailyResults, tradingDaysStartDate);
   const consistency = consistencySnapshot(account, ruleTradingDays);
@@ -394,7 +404,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
             ) : null}
             {canFailEvaluation ? (
               <>
-                <button className="button secondary" type="button" onClick={() => setModal("reset")}>
+                <button className="button danger" type="button" onClick={() => setModal("reset")}>
                   Reset
                 </button>
                 <button className="button danger" type="button" onClick={() => setModal("failed")}>
@@ -402,10 +412,15 @@ export function AccountDetail({ account }: AccountDetailProps) {
                 </button>
               </>
             ) : null}
+            {canResetFunded ? (
+              <button className="button danger" type="button" onClick={() => setModal("reset")}>
+                Reset
+              </button>
+            ) : null}
             <button className="button secondary" type="button" onClick={() => setModal("trade")}>
               Add trade
             </button>
-            <button className="button secondary" type="button" onClick={() => setModal("close")}>
+            <button className="button danger" type="button" onClick={() => setModal("close")}>
               Closed
             </button>
             <button
@@ -508,6 +523,26 @@ export function AccountDetail({ account }: AccountDetailProps) {
         </div>
         <div className="account-payout-history">
           <div className="payout-history-header">
+            <span>Coût du compte</span>
+            <strong>{formatCurrency(accountCostTotal)}</strong>
+          </div>
+          {account.costHistory.length === 0 ? (
+            <p className="payout-history-empty">Aucun coût enregistré.</p>
+          ) : (
+            <div className="cost-history-list">
+              {account.costHistory.map((line) => (
+                <div className="cost-history-row" key={line.id}>
+                  <span>
+                    {formatDisplayDate(line.date)} · {line.label}
+                  </span>
+                  <strong>{formatCurrency(line.amount)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="account-payout-history">
+          <div className="payout-history-header">
             <span>Historique payouts</span>
             <strong>{formatCurrency(account.payouts.filter((payout) => payout.status === "PAID").reduce((sum, payout) => sum + payout.amount, 0))}</strong>
           </div>
@@ -527,7 +562,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
                     }}
                   >
                     <input name="payoutId" type="hidden" value={payout.id} />
-                    <span>{new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${payout.date}T00:00:00`))}</span>
+                    <span>{formatDisplayDate(payout.date)}</span>
                     <strong>{formatCurrency(payout.amount)}</strong>
                     <button
                       aria-label="Supprimer ce payout"
@@ -695,6 +730,17 @@ export function AccountDetail({ account }: AccountDetailProps) {
               <span>Date activation</span>
               <input defaultValue={today} name="activationDate" type="date" />
             </label>
+            <label className="form-field">
+              <span>Coût activation USD</span>
+              <input
+                defaultValue={account.rule?.defaultActivationPrice ?? 0}
+                min="0"
+                name="activationCost"
+                required
+                step="any"
+                type="number"
+              />
+            </label>
             <label className="form-field wide">
               <span>Notes</span>
               <textarea name="notes" rows={3} />
@@ -712,7 +758,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "reset"} title="Reset evaluation" onClose={() => setModal(null)}>
+      <Modal isOpen={modal === "reset"} title={account.accountType === "FUNDED" ? "Reset funded" : "Reset evaluation"} onClose={() => setModal(null)}>
         <form
           className="form-panel"
           onSubmit={(event) => {
@@ -725,6 +771,10 @@ export function AccountDetail({ account }: AccountDetailProps) {
             <label className="form-field">
               <span>Numéro du nouveau compte</span>
               <input name="accountNumber" placeholder={account.accountNumber ?? "RESET-001"} required />
+            </label>
+            <label className="form-field">
+              <span>Coût reset USD</span>
+              <input defaultValue={resetCostDefault} min="0" name="resetCost" required step="any" type="number" />
             </label>
             <label className="form-field wide">
               <span>Notes</span>
@@ -778,7 +828,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <div className="form-grid">
             <input name="accountId" type="hidden" value={account.id} />
             {closeOptions.map((status) => (
-              <label className="check-field" key={status}>
+              <label className={status === "CLOSED" || status === "FAILED" ? "check-field danger" : "check-field"} key={status}>
                 <input name="closeStatus" required type="radio" value={status} />
                 <span>{status}</span>
               </label>
@@ -789,7 +839,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
             <button className="button secondary" type="button" onClick={() => setModal(null)}>
               Annuler
             </button>
-            <button className="button" disabled={isSubmitting} type="submit">
+            <button className="button danger" disabled={isSubmitting} type="submit">
               {isSubmitting ? "Fermeture..." : "Fermer"}
             </button>
           </div>

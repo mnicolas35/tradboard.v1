@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AddPropFirmModal } from "@/components/modals/AddPropFirmModal";
 import { AddPropFirmRuleModal } from "@/components/modals/AddPropFirmRuleModal";
 import { Modal } from "@/components/ui/Modal";
+import { sortPropFirmRules } from "@/lib/rule-sort";
 import { deletePropFirm, deletePropFirmRule, updatePropFirm } from "@/server/actions/tradboard-actions";
 import type { AppData } from "@/types";
 
@@ -19,7 +20,9 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"firm" | null>(null);
+  const [collapsedFirmIds, setCollapsedFirmIds] = useState<string[]>([]);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [duplicatingRuleId, setDuplicatingRuleId] = useState<string | null>(null);
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
   const [isDeletingRule, setIsDeletingRule] = useState(false);
   const [savingFirmId, setSavingFirmId] = useState<string | null>(null);
@@ -28,6 +31,7 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
 
   const rulesById = new Map(propFirmRules.map((rule) => [rule.id, rule]));
   const editingRule = editingRuleId ? rulesById.get(editingRuleId) ?? null : null;
+  const duplicatingRule = duplicatingRuleId ? rulesById.get(duplicatingRuleId) ?? null : null;
   const deletingRule = deletingRuleId ? rulesById.get(deletingRuleId) ?? null : null;
 
   function canManageRule(rule: { isStandard: boolean; createdByUserId: string | null }) {
@@ -55,8 +59,9 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
         <div className="propfirm-tree">
           {propFirms.map((firm) => {
             const firmRules = propFirmRules
-              .filter((rule) => rule.propFirmId === firm.id)
-              .sort((a, b) => (a.isStandard === b.isStandard ? 0 : a.isStandard ? -1 : 1) || a.name.localeCompare(b.name));
+              .filter((rule) => rule.propFirmId === firm.id);
+            const sortedFirmRules = sortPropFirmRules(firmRules, "EVALUATION", "drawdown-then-size");
+            const isCollapsed = collapsedFirmIds.includes(firm.id);
 
             return (
               <section className="propfirm-node" key={firm.id}>
@@ -80,6 +85,21 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
                   }}
                 >
                   <input name="id" type="hidden" value={firm.id} />
+                  <button
+                    aria-label={isCollapsed ? `Afficher les règles de ${firm.name}` : `Masquer les règles de ${firm.name}`}
+                    className="propfirm-toggle"
+                    type="button"
+                    title={isCollapsed ? "Afficher les règles" : "Masquer les règles"}
+                    onClick={() => {
+                      setCollapsedFirmIds((current) => (
+                        current.includes(firm.id)
+                          ? current.filter((id) => id !== firm.id)
+                          : [...current, firm.id]
+                      ));
+                    }}
+                  >
+                    {isCollapsed ? ">" : "v"}
+                  </button>
                   <label className="compact-field">
                     <span>Acronyme</span>
                     <input name="acronym" required defaultValue={firm.acronym} />
@@ -155,18 +175,28 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
                   </div>
                 </form>
 
-                <div className="propfirm-rules">
-                  {firmRules.length === 0 ? (
-                    <p className="muted">Aucune règle active.</p>
-                  ) : (
+                {!isCollapsed ? (
+                  <div className="propfirm-rules">
+                    {sortedFirmRules.length === 0 ? (
+                      <p className="muted">Aucune règle active.</p>
+                    ) : (
                     <div className="propfirm-rule-group-list compact">
-                      {firmRules.map((rule) => (
+                      {sortedFirmRules.map((rule) => (
                         <div className="propfirm-rule-name-row" key={rule.id}>
                           <span className="propfirm-rule-name">
                             {rule.isStandard ? "Règle standard" : "** Règle custom"} {rule.name}
                           </span>
                           <div className="rule-row-actions">
                             <div className={rule.isActive ? "status status-active" : "status"}>{rule.isActive ? "ACTIVE" : "INACTIVE"}</div>
+                            <button
+                              aria-label="Dupliquer la règle"
+                              className="row-icon-button copy"
+                              title="Dupliquer la règle"
+                              type="button"
+                              onClick={() => setDuplicatingRuleId(rule.id)}
+                            >
+                              ⧉
+                            </button>
                             {canManageRule(rule) ? (
                               <>
                                 <button
@@ -195,8 +225,9 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                ) : null}
               </section>
             );
           })}
@@ -215,8 +246,17 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
         isOpen={Boolean(editingRule)}
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={editingRule}
+        mode="edit"
         allowStandardToggle={isAdmin}
         onClose={() => setEditingRuleId(null)}
+      />
+      <AddPropFirmRuleModal
+        isOpen={Boolean(duplicatingRule)}
+        propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
+        initialRule={duplicatingRule}
+        mode="create"
+        allowStandardToggle={isAdmin}
+        onClose={() => setDuplicatingRuleId(null)}
       />
       <Modal isOpen={Boolean(deletingRule)} title="Supprimer cette règle ?" onClose={() => setDeletingRuleId(null)}>
         <div className="confirm-panel">

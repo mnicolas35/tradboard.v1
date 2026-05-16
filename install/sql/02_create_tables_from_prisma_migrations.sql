@@ -506,7 +506,7 @@ ALTER TABLE "PropFirmRule" ADD COLUMN "fundedDrawdownType" "DrawdownType" NOT NU
 -- ============================================================================
 
 -- Reset any invalid theme preference values to 'LIGHT'
-UPDATE "User" SET "theme" = 'LIGHT' WHERE "theme" NOT IN ('LIGHT', 'DARK');
+UPDATE "User" SET "themePreference" = 'LIGHT' WHERE "themePreference" NOT IN ('LIGHT', 'DARK');
 
 
 -- ============================================================================
@@ -541,4 +541,3 @@ CREATE INDEX "AuditLog_action_idx" ON "AuditLog"("action");
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-

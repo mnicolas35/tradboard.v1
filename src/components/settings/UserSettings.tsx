@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateThemePreference } from "@/server/actions/tradboard-actions";
 import type { AppData } from "@/types";
+import type { ThemePreference } from "@prisma/client";
 
 type UserSettingsProps = {
   user: AppData["currentUser"];
@@ -11,7 +12,7 @@ type UserSettingsProps = {
 
 export function UserSettings({ user }: UserSettingsProps) {
   const router = useRouter();
-  const [theme, setTheme] = useState(user.themePreference);
+  const [theme, setTheme] = useState<ThemePreference>(user.themePreference as ThemePreference);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,10 +44,11 @@ export function UserSettings({ user }: UserSettingsProps) {
           <select
             name="themePreference"
             value={theme}
-            onChange={(event) => setTheme(event.currentTarget.value as "LIGHT" | "DARK")}
+            onChange={(event) => setTheme(event.currentTarget.value as ThemePreference)}
           >
             <option value="LIGHT">Clair</option>
             <option value="DARK">Sombre</option>
+            <option value="DARKY">Darky</option>
           </select>
         </label>
         {error ? <p className="form-error">{error}</p> : null}

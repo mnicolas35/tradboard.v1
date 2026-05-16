@@ -13,7 +13,7 @@ import {
   getTotalProfitLossUsd
 } from "@/lib/stats";
 import { getCurrentUser } from "@/server/auth/current-user";
-import type { AccountSummary, AppData, TradingDaySummary } from "@/types";
+import type { AccountCostLineSummary, AccountSummary, AppData, TradingDaySummary } from "@/types";
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined) {
@@ -98,11 +98,19 @@ function tradingDaysFrom(days: TradingDaySummary[], startDate: Date | null) {
   return days.filter((day) => day.tradeDate >= start);
 }
 
+function costLabel(type: string, accountType: string) {
+  if (type === "PURCHASE") return accountType === "FUNDED" ? "Achat funded" : "Achat evaluation";
+  if (type === "RESET") return accountType === "FUNDED" ? "Reset funded" : "Reset evaluation";
+  if (type === "ACTIVATION") return "Activation funded";
+  if (type === "SUBSCRIPTION") return "Abonnement";
+  return "Coût";
+}
+
 export async function getDashboardData(): Promise<AppData> {
   const currentUser = await getCurrentUser();
   const ownedWhere = { userId: currentUser.id };
 
-  const [accounts, tradingDays, expenses, payouts, propFirms, propFirmRules, exchangeRates, propFirmOrders, users] =
+  const [accounts, tradingDays, expenses, payouts, propFirms, propFirmRules, exchangeRates, marketWatchlist, propFirmOrders, users] =
     await Promise.all([
       prisma.account.findMany({
         where: ownedWhere,
@@ -156,6 +164,10 @@ export async function getDashboardData(): Promise<AppData> {
         where: ownedWhere,
         orderBy: { rateDate: "desc" }
       }),
+      prisma.marketWatchItem.findMany({
+        where: ownedWhere,
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
+      }),
       prisma.userPropFirmOrder.findMany({
         where: { userId: currentUser.id }
       }),
@@ -183,6 +195,76 @@ export async function getDashboardData(): Promise<AppData> {
   const totalExpensesUsd = getTotalExpensesUsd(expenses);
   const totalPayoutsUsd = getTotalPayoutsUsd(payouts);
   const netResultUsd = getNetResultUsd(totalProfitLossUsd, totalExpensesUsd, totalPayoutsUsd);
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+
+  const buildAccountChain = (account: (typeof accounts)[number]) => {
+    const chain: Array<typeof account> = [];
+    const seen = new Set<string>();
+    let current: typeof account | undefined = account;
+
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      chain.unshift(current);
+      current = current.parentAccountId ? accountById.get(current.parentAccountId) : undefined;
+    }
+
+    return chain;
+  };
+
+  const buildAccountCostHistory = (account: (typeof accounts)[number]): AccountCostLineSummary[] => {
+    const chain = buildAccountChain(account);
+    const lines = chain.flatMap((chainAccount, index) => {
+      const parent = index > 0 ? chain[index - 1] : null;
+      const explicitCostExpenses = chainAccount.expenses
+        .filter((expense) => ["PURCHASE", "RESET", "ACTIVATION", "SUBSCRIPTION", "OTHER"].includes(expense.type))
+        .map((expense) => ({
+          id: expense.id,
+          sourceAccountId: chainAccount.id,
+          label: costLabel(expense.type, chainAccount.accountType),
+          amount: Number(expense.amount),
+          currency: expense.currency,
+          date: dateString(expense.expenseDate),
+          type: expense.type,
+          notes: expense.notes
+        }));
+
+      if (explicitCostExpenses.length > 0) {
+        return explicitCostExpenses;
+      }
+
+      const purchasePrice = chainAccount.purchasePrice === null ? null : Number(chainAccount.purchasePrice);
+      const eventDate = chainAccount.purchaseDate ?? chainAccount.activationDate ?? chainAccount.createdAt;
+      if (purchasePrice === null || purchasePrice <= 0) {
+        return [];
+      }
+
+      const isReset = parent !== null && parent.accountType === chainAccount.accountType;
+      const isActivation = parent?.accountType === "EVALUATION" && chainAccount.accountType === "FUNDED";
+      const parentPurchasePrice = parent?.purchasePrice === null || parent?.purchasePrice === undefined ? 0 : Number(parent.purchasePrice);
+      const amount = isReset && purchasePrice > parentPurchasePrice ? purchasePrice - parentPurchasePrice : purchasePrice;
+
+      if (amount <= 0) {
+        return [];
+      }
+
+      return [{
+        id: `account-cost-${chainAccount.id}`,
+        sourceAccountId: chainAccount.id,
+        label: isActivation
+          ? "Activation funded"
+          : isReset
+            ? costLabel("RESET", chainAccount.accountType)
+            : costLabel("PURCHASE", chainAccount.accountType),
+        amount,
+        currency: chainAccount.currency,
+        date: dateString(eventDate),
+        type: isActivation ? "ACTIVATION" : isReset ? "RESET" : "PURCHASE",
+        notes: chainAccount.promoUsed
+      }];
+    });
+
+    return lines.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
+  };
 
   const mapTradingDay = (day: (typeof tradingDays)[number]): TradingDaySummary => ({
     id: day.id,
@@ -221,7 +303,8 @@ export async function getDashboardData(): Promise<AppData> {
     const payoutsGrossUsd = payoutsPaidUsd;
     const payoutsNetUsd = payoutsGrossUsd * split;
     const accountNetResultUsd = getNetResultUsd(tradingResultUsd, expensesUsd, payoutsNetUsd);
-    const capitalCost = (account.purchasePrice ? Number(account.purchasePrice) : 0) + expensesUsd;
+    const costHistory = buildAccountCostHistory(account);
+    const accountCostUsd = costHistory.reduce((sum, line) => sum + line.amount, 0);
 
     const drawdownLimit = resolvedRule?.maxDrawdown ?? null;
     const lastDrawdownDay = account.tradingDays.find((day) => day.drawdownAtClose !== null);
@@ -269,9 +352,10 @@ export async function getDashboardData(): Promise<AppData> {
       payoutsGrossUsd,
       payoutsNetUsd,
       expensesUsd,
+      accountCostUsd,
       netResultUsd: accountNetResultUsd,
       netResultEur: getTotalProfitLossEur(accountNetResultUsd, usdEurRateValue),
-      roiPercent: capitalCost > 0 ? (accountNetResultUsd / capitalCost) * 100 : null,
+      roiPercent: accountCostUsd > 0 ? (accountNetResultUsd / accountCostUsd) * 100 : null,
       payoutEligibility,
       evaluationEligibility,
       tradedDaysCount: dailyResults.length,
@@ -295,6 +379,7 @@ export async function getDashboardData(): Promise<AppData> {
         type: expense.type,
         notes: expense.notes
       })),
+      costHistory,
       payouts: account.payouts.map((payout) => ({
         id: payout.id,
         amount: Number(payout.amount),
@@ -411,6 +496,24 @@ export async function getDashboardData(): Promise<AppData> {
       rate: Number(rate.rate),
       rateDate: dateString(rate.rateDate),
       source: rate.source
+    })),
+    marketWatchlist: marketWatchlist.map((item) => ({
+      id: item.id,
+      query: item.query,
+      symbol: item.symbol,
+      displaySymbol: item.displaySymbol,
+      name: item.name,
+      exchange: item.exchange,
+      quoteType: item.quoteType,
+      instrumentType: item.instrumentType,
+      contractRoot: item.contractRoot,
+      activeContractCode: item.activeContractCode,
+      activeContractMonth: item.activeContractMonth,
+      activeContractYear: item.activeContractYear,
+      feedSymbol: item.feedSymbol,
+      source: item.source,
+      color: item.color,
+      sortOrder: item.sortOrder
     }))
   };
 }

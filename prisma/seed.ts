@@ -1,10 +1,30 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 function date(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+async function upsertStandardPropFirmRule(data: Prisma.PropFirmRuleUncheckedCreateInput) {
+  const existingRule = await prisma.propFirmRule.findFirst({
+    where: {
+      propFirmId: data.propFirmId,
+      name: data.name,
+      accountSize: data.accountSize
+    },
+    select: { id: true }
+  });
+
+  if (existingRule) {
+    return prisma.propFirmRule.update({
+      where: { id: existingRule.id },
+      data
+    });
+  }
+
+  return prisma.propFirmRule.create({ data });
 }
 
 async function main() {
@@ -102,24 +122,85 @@ async function main() {
     }
   });
 
-  const topstepEval100k = await prisma.propFirmRule.create({
-    data: {
-      propFirmId: topstep.id,
-      name: "Evaluation 100K",
-      accountType: "EVALUATION",
-      accountSize: "100000",
-      target: "6000",
-      maxDrawdown: "3000",
-      dailyDrawdown: "2000",
-      minTradingDays: 5,
-      minTradingDaysForPayout: 5,
-      minPayoutTradingDays: 5,
-      payoutRuleType: "BUFFER_ONLY",
-      traderSharePercent: "90",
-      defaultPurchasePrice: "165",
-      notes: "Regle d'exemple a ajuster selon les conditions reelles.",
-      isStandard: true
-    }
+  await upsertStandardPropFirmRule({
+    propFirmId: topstep.id,
+    name: "50K Trading Combine",
+    accountType: "EVALUATION",
+    accountSize: "50000",
+    target: "3000",
+    maxDrawdown: "2000",
+    buffer: "0",
+    consistencyPercent: "50",
+    fundedConsistencyPercent: "0",
+    minTradingDays: 2,
+    minTradingDaysForPayout: 5,
+    minPayoutTradingDays: 5,
+    minDailyProfitForPayout: "200",
+    payoutRuleType: "CUSTOM",
+    traderSharePercent: "90",
+    defaultPurchasePrice: "49",
+    defaultActivationPrice: "149",
+    defaultResetPrice: "49",
+    defaultFundedResetPrice: "0",
+    notes: "Topstep Trading Combine.",
+    evalDrawdownType: "EOD",
+    fundedDrawdownType: "INTRADAY",
+    isStandard: true,
+    isActive: true
+  });
+
+  const topstepEval100k = await upsertStandardPropFirmRule({
+    propFirmId: topstep.id,
+    name: "100K Trading Combine",
+    accountType: "EVALUATION",
+    accountSize: "100000",
+    target: "6000",
+    maxDrawdown: "3000",
+    buffer: "0",
+    consistencyPercent: "50",
+    fundedConsistencyPercent: "0",
+    minTradingDays: 2,
+    minTradingDaysForPayout: 5,
+    minPayoutTradingDays: 5,
+    minDailyProfitForPayout: "200",
+    payoutRuleType: "CUSTOM",
+    traderSharePercent: "90",
+    defaultPurchasePrice: "99",
+    defaultActivationPrice: "149",
+    defaultResetPrice: "99",
+    defaultFundedResetPrice: "0",
+    notes: "Topstep Trading Combine.",
+    evalDrawdownType: "EOD",
+    fundedDrawdownType: "INTRADAY",
+    isStandard: true,
+    isActive: true
+  });
+
+  await upsertStandardPropFirmRule({
+    propFirmId: topstep.id,
+    name: "150K Trading Combine",
+    accountType: "EVALUATION",
+    accountSize: "150000",
+    target: "9000",
+    maxDrawdown: "4500",
+    buffer: "0",
+    consistencyPercent: "50",
+    fundedConsistencyPercent: "0",
+    minTradingDays: 2,
+    minTradingDaysForPayout: 5,
+    minPayoutTradingDays: 5,
+    minDailyProfitForPayout: "200",
+    payoutRuleType: "CUSTOM",
+    traderSharePercent: "90",
+    defaultPurchasePrice: "149",
+    defaultActivationPrice: "149",
+    defaultResetPrice: "149",
+    defaultFundedResetPrice: "0",
+    notes: "Topstep Trading Combine.",
+    evalDrawdownType: "EOD",
+    fundedDrawdownType: "INTRADAY",
+    isStandard: true,
+    isActive: true
   });
 
   const evalAccount = await prisma.account.create({

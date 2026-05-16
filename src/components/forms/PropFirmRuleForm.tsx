@@ -14,6 +14,7 @@ import {
 type PropFirmRuleFormProps = {
   propFirms: SelectOption[];
   initialRule?: AppData["propFirmRules"][number] | null;
+  mode?: "create" | "edit";
   defaultPropFirmId?: string | null;
   propFirmLabel?: string | null;
   compact?: boolean;
@@ -29,6 +30,7 @@ function getErrorMessage(error: unknown) {
 export function PropFirmRuleForm({
   propFirms,
   initialRule,
+  mode,
   defaultPropFirmId,
   propFirmLabel,
   compact = false,
@@ -39,7 +41,8 @@ export function PropFirmRuleForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isEditing = Boolean(initialRule);
+  const isEditing = mode ? mode === "edit" : Boolean(initialRule);
+  const defaultName = initialRule && !isEditing ? `${initialRule.name} copie` : initialRule?.name;
   const selectedPropFirmLabel = propFirmLabel ?? propFirms.find((propFirm) => propFirm.id === defaultPropFirmId)?.label ?? null;
 
   return (
@@ -52,7 +55,7 @@ export function PropFirmRuleForm({
 
         try {
           const formData = new FormData(event.currentTarget);
-          if (initialRule) {
+          if (isEditing && initialRule) {
             formData.set("id", initialRule.id);
             await updatePropFirmRule(formData);
           } else {
@@ -78,19 +81,19 @@ export function PropFirmRuleForm({
           <SelectField label="Prop firm" name="propFirmId" options={propFirms} required defaultValue={initialRule?.propFirmId} />
         )}
         <input name="accountType" type="hidden" value={initialRule?.accountType ?? "EVALUATION"} />
-        <Field label="Nom règle" name="name" required defaultValue={initialRule?.name} />
-        <Field label="Taille du compte" name="accountSize" placeholder="50000" required type="number" defaultValue={initialRule?.accountSize} />
-        <Field label="Drawdown" name="maxDrawdown" required type="number" defaultValue={initialRule?.maxDrawdown} />
-        <Field label="Coût du compte" name="defaultPurchasePrice" type="number" defaultValue={initialRule?.defaultPurchasePrice ?? undefined} />
-        <Field label="Coût reset évaluation" name="defaultResetPrice" type="number" defaultValue={initialRule?.defaultResetPrice ?? undefined} />
-        <Field label="Coût activation funded" name="defaultActivationPrice" type="number" defaultValue={initialRule?.defaultActivationPrice ?? undefined} />
-        <Field label="Coût reset funded" name="defaultFundedResetPrice" type="number" defaultValue={initialRule?.defaultFundedResetPrice ?? undefined} />
+        <Field label="Nom règle" name="name" required defaultValue={defaultName} />
+        <Field label="Taille du compte" name="accountSize" placeholder="50000" required step="any" type="number" defaultValue={initialRule?.accountSize} />
+        <Field label="Drawdown" name="maxDrawdown" required step="any" type="number" defaultValue={initialRule?.maxDrawdown} />
+        <Field label="Coût du compte" name="defaultPurchasePrice" step="any" type="number" defaultValue={initialRule?.defaultPurchasePrice ?? undefined} />
+        <Field label="Coût reset évaluation" name="defaultResetPrice" step="any" type="number" defaultValue={initialRule?.defaultResetPrice ?? undefined} />
+        <Field label="Coût activation funded" name="defaultActivationPrice" step="any" type="number" defaultValue={initialRule?.defaultActivationPrice ?? undefined} />
+        <Field label="Coût reset funded" name="defaultFundedResetPrice" step="any" type="number" defaultValue={initialRule?.defaultFundedResetPrice ?? undefined} />
       </div>
       <div className="rule-section">
         <div className="rule-section-title">Évaluation</div>
         <div className="form-grid">
-          <Field label="Target" name="target" required type="number" defaultValue={initialRule?.target} />
-          <Field label="Consistance" name="consistencyPercent" type="number" defaultValue={initialRule?.consistencyPercent ?? undefined} />
+          <Field label="Target" name="target" required step="any" type="number" defaultValue={initialRule?.target} />
+          <Field label="Consistance" name="consistencyPercent" step="any" type="number" defaultValue={initialRule?.consistencyPercent ?? undefined} />
           <Field label="Nombre de jours de trade minimum" name="minTradingDays" type="number" defaultValue={initialRule?.minTradingDays ?? undefined} />
           <DrawdownTypeToggle name="evalDrawdownType" defaultValue={initialRule?.evalDrawdownType ?? "EOD"} />
         </div>
@@ -98,11 +101,11 @@ export function PropFirmRuleForm({
       <div className="rule-section">
         <div className="rule-section-title">Funded</div>
         <div className="form-grid">
-          <Field label="Buffer" name="buffer" type="number" defaultValue={initialRule?.buffer ?? undefined} />
-          <Field label="Consistance" name="fundedConsistencyPercent" type="number" defaultValue={initialRule?.fundedConsistencyPercent ?? undefined} />
+          <Field label="Buffer" name="buffer" step="any" type="number" defaultValue={initialRule?.buffer ?? undefined} />
+          <Field label="Consistance" name="fundedConsistencyPercent" step="any" type="number" defaultValue={initialRule?.fundedConsistencyPercent ?? undefined} />
           <Field label="Jours de trade minimum" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
-          <Field label="Montant minimum par jour" name="minDailyProfitForPayout" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
-          <Field label="Part trader" name="traderSharePercent" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
+          <Field label="Montant minimum par jour" name="minDailyProfitForPayout" step="any" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
+          <Field label="Part trader" name="traderSharePercent" step="any" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
           <DrawdownTypeToggle name="fundedDrawdownType" defaultValue={initialRule?.fundedDrawdownType ?? "EOD"} />
         </div>
       </div>
