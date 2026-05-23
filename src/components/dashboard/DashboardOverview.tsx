@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
 import { formatCurrency } from "@/lib/format";
+import { calculateTraderPayoutNet } from "@/lib/payout";
 import type { AppData, MarketWatchItemSummary } from "@/types";
 
 type DashboardOverviewProps = {
@@ -504,27 +505,30 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     ))
     .sort((a, b) => a.propFirmName.localeCompare(b.propFirmName) || accountLabel(a).localeCompare(accountLabel(b)));
   const payoutPossibleTotal = sum(payoutPossibleAccounts.map((account) => account.payoutEligibility.availableAmount));
+  const payoutPossibleNetTotal = sum(payoutPossibleAccounts.map((account) => account.payoutEligibility.netAmount));
   const payoutHistoryAccounts = data.accounts.filter((account) => (
     account.accountType === "FUNDED" &&
     (account.status === "ACTIVE" || account.status === "FAILED") &&
     account.payouts.some((payout) => payout.status === "PAID")
   ));
-  const paidPayouts = payoutHistoryAccounts.flatMap((account) => (
-    account.payouts
+  const paidPayouts = payoutHistoryAccounts.flatMap((account) => {
+    let previousGrossPayouts = 0;
+
+    return [...account.payouts]
       .filter((payout) => payout.status === "PAID")
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt ?? "").localeCompare(b.createdAt ?? ""))
       .map((payout) => {
-        const traderShare = account.payoutsGrossUsd > 0
-          ? account.payoutsNetUsd / account.payoutsGrossUsd
-          : (account.rule?.traderSharePercent ?? 100) / 100;
+        const amountNet = calculateTraderPayoutNet(payout.amount, account.rule, previousGrossPayouts);
+        previousGrossPayouts += payout.amount;
 
         return {
           ...payout,
-          amountNet: payout.amount * traderShare,
+          amountNet,
           propFirmId: account.propFirmId,
           propFirmName: account.propFirmName
         };
       })
-  ));
+  });
   const payoutNetAccounts = [...new Map(
     [...payoutHistoryAccounts, ...payoutPossibleAccounts].map((account) => [account.id, account])
   ).values()];
@@ -542,8 +546,6 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     .sort((a, b) => Number(b.isEligible) - Number(a.isEligible) || b.payoutNet - a.payoutNet || a.label.localeCompare(b.label));
   const payoutNetTotal = sum(payoutNetRows.map((row) => row.payoutNet));
   const payoutNetTotalEur = data.metrics.latestUsdEurRate ? payoutNetTotal * data.metrics.latestUsdEurRate.rate : null;
-  const annualPayouts = sum(paidPayouts.filter((payout) => isInYear(payout.date, year)).map((payout) => payout.amount));
-  const monthlyPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, year, month)).map((payout) => payout.amount));
   const monthlyNetPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, year, month)).map((payout) => payout.amountNet));
   const parentAccountIds = new Set(data.accounts.map((account) => account.parentAccountId).filter(Boolean));
   const costCarrierAccounts = data.accounts.filter((account) => !parentAccountIds.has(account.id));
@@ -872,17 +874,21 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
         <section className="panel global-kpi-card">
           <div className="global-kpi-top">
             <div className="global-kpi-header">
-              <h2>Payout possible</h2>
+              <h2>Payout possible brut</h2>
             </div>
             <strong className="global-kpi-value tone-positive">{formatCurrency(payoutPossibleTotal)}</strong>
             <div className="global-kpi-list">
               <div className="global-kpi-row">
-                <span>Payout pris annuel</span>
-                <strong>{formatCurrency(annualPayouts)}</strong>
+                <span>Payout possible net</span>
+                <strong>{formatCurrency(payoutPossibleNetTotal)}</strong>
               </div>
               <div className="global-kpi-row">
-                <span>Payout pris {currentMonth.label}</span>
-                <strong>{formatCurrency(monthlyPayouts)}</strong>
+                <span>Payout pris {selectedAnnualYear}</span>
+                <strong>{formatCurrency(selectedAnnualPayouts)}</strong>
+              </div>
+              <div className="global-kpi-row">
+                <span>Payout pris {selectedMonth.label}</span>
+                <strong>{formatCurrency(selectedMonthlyPayouts)}</strong>
               </div>
             </div>
           </div>

@@ -17,9 +17,33 @@ export type PayoutEligibility = {
   reasons: string[];
 };
 
+export function calculateTraderPayoutNet(
+  grossAmount: number,
+  rule: Pick<ResolvedAccountRule, "traderSharePercent" | "traderFullShareUntilAmount"> | null,
+  previousGrossPayouts = 0
+) {
+  const standardShare = (rule?.traderSharePercent ?? 100) / 100;
+  const fullShareUntil = Math.max(0, rule?.traderFullShareUntilAmount ?? 0);
+
+  if (grossAmount <= 0) {
+    return 0;
+  }
+
+  if (fullShareUntil <= 0) {
+    return grossAmount * standardShare;
+  }
+
+  const remainingFullShare = Math.max(0, fullShareUntil - previousGrossPayouts);
+  const fullShareAmount = Math.min(grossAmount, remainingFullShare);
+  const standardShareAmount = grossAmount - fullShareAmount;
+
+  return fullShareAmount + standardShareAmount * standardShare;
+}
+
 export function calculatePayoutEligibility(
   currentResultUsd: number,
   days: TradingDayForPayout[],
+  previousGrossPayouts: number,
   rule: ResolvedAccountRule | null
 ): PayoutEligibility {
   if (!rule) {
@@ -40,7 +64,6 @@ export function calculatePayoutEligibility(
   const buffer = rule?.buffer ?? 0;
   const minTradingDays = rule?.minPayoutTradingDays ?? 0;
   const minDailyProfit = rule?.minDailyProfitForPayout ?? 0;
-  const traderSharePercent = rule?.traderSharePercent ?? 100;
   const availableAmount = Math.max(0, currentResultUsd - buffer);
   const missingBuffer = Math.max(0, buffer - currentResultUsd);
   const bufferReached = missingBuffer === 0;
@@ -81,7 +104,7 @@ export function calculatePayoutEligibility(
   return {
     isEligible: reasons.length === 0,
     availableAmount,
-    netAmount: availableAmount * (traderSharePercent / 100),
+    netAmount: calculateTraderPayoutNet(availableAmount, rule, previousGrossPayouts),
     buffer,
     bufferReached,
     missingBuffer,

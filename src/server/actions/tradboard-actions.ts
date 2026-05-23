@@ -321,6 +321,7 @@ export async function createPropFirmRule(formData: FormData) {
       minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
       payoutRuleType: optionalRuleType(formData) ?? "NONE",
       traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
+      traderFullShareUntilAmount: optionalDecimal(formData, "traderFullShareUntilAmount"),
       defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
       activationPrice: optionalDecimal(formData, "activationPrice"),
       defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
@@ -395,6 +396,7 @@ export async function updatePropFirmRule(formData: FormData) {
         minDailyProfitForPayout: optionalDecimal(formData, "minDailyProfitForPayout"),
         payoutRuleType: optionalRuleType(formData) ?? "NONE",
         traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
+        traderFullShareUntilAmount: optionalDecimal(formData, "traderFullShareUntilAmount"),
         defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
         activationPrice: optionalDecimal(formData, "activationPrice"),
         defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice") ?? optionalDecimal(formData, "activationPrice"),
@@ -452,9 +454,23 @@ export async function createAccount(formData: FormData) {
   }
 
   const defaultPurchasePrice = rule.defaultPurchasePrice === null ? null : Number(rule.defaultPurchasePrice);
-  const purchasePrice =
+  const calculatedPurchasePrice =
     defaultPurchasePrice === null ? null : (defaultPurchasePrice * (100 - promoPercent)) / 100;
-  const promoUsed = promoPercent > 0 ? `${promoPercent}%` : null;
+  const manualPurchasePrice = optionalDecimal(formData, "purchasePrice");
+  const purchasePrice = manualPurchasePrice ?? calculatedPurchasePrice;
+
+  if (purchasePrice !== null && Number(purchasePrice) < 0) {
+    throw new Error("Le montant payé doit être positif.");
+  }
+
+  const hasManualPrice =
+    manualPurchasePrice !== null &&
+    calculatedPurchasePrice !== null &&
+    Math.abs(Number(manualPurchasePrice) - calculatedPurchasePrice) > 0.009;
+  const promoUsed = [
+    promoPercent > 0 ? `${promoPercent}%` : null,
+    hasManualPrice ? "montant manuel" : null
+  ].filter(Boolean).join(" + ") || null;
   const generatedName = `${rule.propFirm.acronym} ${rule.name}`;
   const purchaseDate = requiredDate(formData, "purchaseDate");
   const activationDate =
@@ -721,6 +737,7 @@ export async function createPayout(formData: FormData) {
   const payoutEligibility = calculatePayoutEligibility(
     currentResultUsd,
     [...payoutDaysByDate.values()].map((profitLossUsd) => ({ profitLossUsd })),
+    paidPayoutsUsd,
     resolvedRule
   );
 
@@ -1145,6 +1162,7 @@ export async function saveAccountRuleOverride(formData: FormData) {
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
       payoutRuleType: optionalRuleType(formData),
       traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
+      traderFullShareUntilAmount: optionalDecimal(formData, "traderFullShareUntilAmount"),
       defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
       defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice"),
       defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),
@@ -1165,6 +1183,7 @@ export async function saveAccountRuleOverride(formData: FormData) {
       consistencyPercent: optionalDecimal(formData, "consistencyPercent"),
       payoutRuleType: optionalRuleType(formData),
       traderSharePercent: optionalDecimal(formData, "traderSharePercent"),
+      traderFullShareUntilAmount: optionalDecimal(formData, "traderFullShareUntilAmount"),
       defaultPurchasePrice: optionalDecimal(formData, "defaultPurchasePrice"),
       defaultActivationPrice: optionalDecimal(formData, "defaultActivationPrice"),
       defaultResetPrice: optionalDecimal(formData, "defaultResetPrice"),

@@ -72,6 +72,7 @@ export type AppData = {
       payoutBuffer: number | null;
       payoutRuleType: string;
       traderSharePercent: number | null;
+      traderFullShareUntilAmount: number | null;
       defaultPurchasePrice: number | null;
       defaultActivationPrice: number | null;
       defaultResetPrice: number | null;
@@ -135,6 +136,7 @@ export type AccountSummary = {
     minDailyProfitForPayout: number | null;
     payoutRuleType: string;
     traderSharePercent: number | null;
+    traderFullShareUntilAmount: number | null;
     defaultPurchasePrice: number | null;
     defaultActivationPrice: number | null;
     defaultResetPrice: number | null;

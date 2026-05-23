@@ -541,3 +541,12 @@ CREATE INDEX "AuditLog_action_idx" ON "AuditLog"("action");
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+-- ============================================================================
+-- Migration: 20260523143000_add_trader_full_share_threshold
+-- ============================================================================
+
+ALTER TABLE "PropFirmRule" ADD COLUMN "traderFullShareUntilAmount" DECIMAL(12, 2);
+
+ALTER TABLE "AccountRuleOverride" ADD COLUMN "traderFullShareUntilAmount" DECIMAL(12, 2);

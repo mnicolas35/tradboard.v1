@@ -1,7 +1,7 @@
 import { getLatestUsdEurRate, getMonthlyProfitLossEur, getTotalProfitLossEur } from "@/lib/currency";
 import { calculateAvailableDrawdownFromCurrent } from "@/lib/drawdown";
 import { calculateEvaluationEligibility } from "@/lib/evaluation";
-import { calculatePayoutEligibility } from "@/lib/payout";
+import { calculatePayoutEligibility, calculateTraderPayoutNet } from "@/lib/payout";
 import { prisma } from "@/lib/prisma";
 import { resolveAccountRule } from "@/lib/rules";
 import {
@@ -297,11 +297,20 @@ export async function getDashboardData(): Promise<AppData> {
     const payoutEligibility = calculatePayoutEligibility(
       currentResultUsd,
       payoutDayResults,
+      payoutsPaidUsd,
       account.accountType === "FUNDED" ? resolvedRule : null
     );
-    const split = (resolvedRule?.traderSharePercent ?? 100) / 100;
     const payoutsGrossUsd = payoutsPaidUsd;
-    const payoutsNetUsd = payoutsGrossUsd * split;
+    const paidPayoutsByDate = [...account.payouts]
+      .filter((payout) => payout.status === "PAID")
+      .sort((a, b) => a.payoutDate.getTime() - b.payoutDate.getTime() || a.createdAt.getTime() - b.createdAt.getTime());
+    let previousGrossPayouts = 0;
+    const payoutsNetUsd = paidPayoutsByDate.reduce((sum, payout) => {
+      const grossAmount = Number(payout.amount);
+      const netAmount = calculateTraderPayoutNet(grossAmount, resolvedRule, previousGrossPayouts);
+      previousGrossPayouts += grossAmount;
+      return sum + netAmount;
+    }, 0);
     const accountNetResultUsd = getNetResultUsd(tradingResultUsd, expensesUsd, payoutsNetUsd);
     const costHistory = buildAccountCostHistory(account);
     const accountCostUsd = costHistory.reduce((sum, line) => sum + line.amount, 0);
@@ -472,6 +481,7 @@ export async function getDashboardData(): Promise<AppData> {
       payoutBuffer: numberOrNull(rule.payoutBuffer),
       payoutRuleType: rule.payoutRuleType,
       traderSharePercent: numberOrNull(rule.traderSharePercent),
+      traderFullShareUntilAmount: numberOrNull(rule.traderFullShareUntilAmount),
       defaultPurchasePrice: numberOrNull(rule.defaultPurchasePrice),
       defaultActivationPrice: numberOrNull(rule.defaultActivationPrice ?? rule.activationPrice),
       defaultResetPrice: numberOrNull(rule.defaultResetPrice),

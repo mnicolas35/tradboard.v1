@@ -18,6 +18,7 @@ type RuleSource = Pick<
   | "fundedConsistencyPercent"
   | "payoutRuleType"
   | "traderSharePercent"
+  | "traderFullShareUntilAmount"
   | "defaultPurchasePrice"
   | "activationPrice"
   | "defaultActivationPrice"
@@ -42,6 +43,7 @@ type OverrideSource = Pick<
   | "consistencyPercent"
   | "payoutRuleType"
   | "traderSharePercent"
+  | "traderFullShareUntilAmount"
   | "defaultPurchasePrice"
   | "defaultActivationPrice"
   | "defaultResetPrice"
@@ -81,6 +83,7 @@ export type ResolvedAccountRule = {
   fundedConsistencyPercent: number | null;
   payoutRuleType: PayoutRuleType;
   traderSharePercent: number | null;
+  traderFullShareUntilAmount: number | null;
   defaultPurchasePrice: number | null;
   defaultActivationPrice: number | null;
   defaultResetPrice: number | null;
@@ -112,6 +115,10 @@ export function resolveAccountRule(rule: RuleSource | null, override: OverrideSo
     fundedConsistencyPercent: numberOrNull(rule.fundedConsistencyPercent),
     payoutRuleType: overrideValue(override?.payoutRuleType, rule.payoutRuleType) ?? "NONE",
     traderSharePercent: overrideNumber(override?.traderSharePercent, rule.traderSharePercent),
+    traderFullShareUntilAmount: overrideNumber(
+      override?.traderFullShareUntilAmount,
+      rule.traderFullShareUntilAmount
+    ),
     defaultPurchasePrice: overrideNumber(override?.defaultPurchasePrice, rule.defaultPurchasePrice),
     defaultActivationPrice: overrideNumber(
       override?.defaultActivationPrice,

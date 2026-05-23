@@ -155,43 +155,44 @@ model UserPropFirmOrder {
 }
 
 model PropFirmRule {
-  id                       String         @id @default(cuid())
-  propFirmId               String
-  createdByUserId          String?
-  name                     String
-  accountType              AccountType
-  accountSize              Decimal        @db.Decimal(12, 2)
-  target                   Decimal        @db.Decimal(12, 2)
-  maxDrawdown              Decimal        @db.Decimal(12, 2)
-  dailyDrawdown            Decimal?       @db.Decimal(12, 2)
-  buffer                   Decimal?       @db.Decimal(12, 2)
-  payoutBuffer             Decimal?       @db.Decimal(12, 2)
-  consistencyPercent       Decimal?       @db.Decimal(5, 2)
-  fundedConsistencyPercent Decimal?       @db.Decimal(5, 2)
-  minTradingDays           Int?
-  minDailyProfit           Decimal?       @db.Decimal(12, 2)
-  minTradingDaysForPayout  Int?
-  minPayoutTradingDays     Int?
-  minDailyProfitForPayout  Decimal?       @db.Decimal(12, 2)
-  payoutRuleType           PayoutRuleType @default(NONE)
-  traderSharePercent       Decimal?       @db.Decimal(5, 2)
-  defaultPurchasePrice     Decimal?       @db.Decimal(12, 2)
-  activationPrice          Decimal?       @db.Decimal(12, 2)
-  defaultActivationPrice   Decimal?       @db.Decimal(12, 2)
-  defaultResetPrice        Decimal?       @db.Decimal(12, 2)
-  defaultFundedResetPrice  Decimal?       @db.Decimal(12, 2)
-  promo                    String?
-  promoNote                String?
-  notes                    String?
-  evalDrawdownType         DrawdownType   @default(EOD)
-  fundedDrawdownType       DrawdownType   @default(EOD)
-  isStandard               Boolean        @default(false)
-  isActive                 Boolean        @default(true)
-  createdAt                DateTime       @default(now())
-  updatedAt                DateTime       @updatedAt
-  propFirm                 PropFirm       @relation(fields: [propFirmId], references: [id], onDelete: Restrict)
-  createdByUser            User?          @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
-  accounts                 Account[]
+  id                         String         @id @default(cuid())
+  propFirmId                 String
+  createdByUserId            String?
+  name                       String
+  accountType                AccountType
+  accountSize                Decimal        @db.Decimal(12, 2)
+  target                     Decimal        @db.Decimal(12, 2)
+  maxDrawdown                Decimal        @db.Decimal(12, 2)
+  dailyDrawdown              Decimal?       @db.Decimal(12, 2)
+  buffer                     Decimal?       @db.Decimal(12, 2)
+  payoutBuffer               Decimal?       @db.Decimal(12, 2)
+  consistencyPercent         Decimal?       @db.Decimal(5, 2)
+  fundedConsistencyPercent   Decimal?       @db.Decimal(5, 2)
+  minTradingDays             Int?
+  minDailyProfit             Decimal?       @db.Decimal(12, 2)
+  minTradingDaysForPayout    Int?
+  minPayoutTradingDays       Int?
+  minDailyProfitForPayout    Decimal?       @db.Decimal(12, 2)
+  payoutRuleType             PayoutRuleType @default(NONE)
+  traderSharePercent         Decimal?       @db.Decimal(5, 2)
+  traderFullShareUntilAmount Decimal?       @db.Decimal(12, 2)
+  defaultPurchasePrice       Decimal?       @db.Decimal(12, 2)
+  activationPrice            Decimal?       @db.Decimal(12, 2)
+  defaultActivationPrice     Decimal?       @db.Decimal(12, 2)
+  defaultResetPrice          Decimal?       @db.Decimal(12, 2)
+  defaultFundedResetPrice    Decimal?       @db.Decimal(12, 2)
+  promo                      String?
+  promoNote                  String?
+  notes                      String?
+  evalDrawdownType           DrawdownType   @default(EOD)
+  fundedDrawdownType         DrawdownType   @default(EOD)
+  isStandard                 Boolean        @default(false)
+  isActive                   Boolean        @default(true)
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+  propFirm                   PropFirm       @relation(fields: [propFirmId], references: [id], onDelete: Restrict)
+  createdByUser              User?          @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  accounts                   Account[]
 
   @@index([propFirmId])
   @@index([createdByUserId])
@@ -240,28 +241,29 @@ model Account {
 }
 
 model AccountRuleOverride {
-  id                      String          @id @default(cuid())
-  accountId               String          @unique
-  target                  Decimal?        @db.Decimal(12, 2)
-  maxDrawdown             Decimal?        @db.Decimal(12, 2)
-  dailyDrawdown           Decimal?        @db.Decimal(12, 2)
-  buffer                  Decimal?        @db.Decimal(12, 2)
-  payoutBuffer            Decimal?        @db.Decimal(12, 2)
-  minTradingDays          Int?
-  minDailyProfit          Decimal?        @db.Decimal(12, 2)
-  minPayoutTradingDays    Int?
-  minDailyProfitForPayout Decimal?        @db.Decimal(12, 2)
-  consistencyPercent      Decimal?        @db.Decimal(5, 2)
-  payoutRuleType          PayoutRuleType?
-  traderSharePercent      Decimal?        @db.Decimal(5, 2)
-  defaultPurchasePrice    Decimal?        @db.Decimal(12, 2)
-  defaultActivationPrice  Decimal?        @db.Decimal(12, 2)
-  defaultResetPrice       Decimal?        @db.Decimal(12, 2)
-  promoNote               String?
-  notes                   String?
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
-  account                 Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id                         String          @id @default(cuid())
+  accountId                  String          @unique
+  target                     Decimal?        @db.Decimal(12, 2)
+  maxDrawdown                Decimal?        @db.Decimal(12, 2)
+  dailyDrawdown              Decimal?        @db.Decimal(12, 2)
+  buffer                     Decimal?        @db.Decimal(12, 2)
+  payoutBuffer               Decimal?        @db.Decimal(12, 2)
+  minTradingDays             Int?
+  minDailyProfit             Decimal?        @db.Decimal(12, 2)
+  minPayoutTradingDays       Int?
+  minDailyProfitForPayout    Decimal?        @db.Decimal(12, 2)
+  consistencyPercent         Decimal?        @db.Decimal(5, 2)
+  payoutRuleType             PayoutRuleType?
+  traderSharePercent         Decimal?        @db.Decimal(5, 2)
+  traderFullShareUntilAmount Decimal?        @db.Decimal(12, 2)
+  defaultPurchasePrice       Decimal?        @db.Decimal(12, 2)
+  defaultActivationPrice     Decimal?        @db.Decimal(12, 2)
+  defaultResetPrice          Decimal?        @db.Decimal(12, 2)
+  promoNote                  String?
+  notes                      String?
+  createdAt                  DateTime        @default(now())
+  updatedAt                  DateTime        @updatedAt
+  account                    Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model TradingDay {

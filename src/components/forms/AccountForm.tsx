@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { sortPropFirmRules } from "@/lib/rule-sort";
 import { createAccount } from "@/server/actions/tradboard-actions";
 import type { AppData } from "@/types";
@@ -35,6 +35,10 @@ function todayDateValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatPriceInput(value: number | null) {
+  return value === null ? "" : value.toFixed(2);
+}
+
 export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: AccountFormProps) {
   const router = useRouter();
   const today = todayDateValue();
@@ -44,6 +48,8 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
   const [selectedRuleId, setSelectedRuleId] = useState("");
   const [selectedAccountType, setSelectedAccountType] = useState("EVALUATION");
   const [promoPercent, setPromoPercent] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [manualPurchasePrice, setManualPurchasePrice] = useState(false);
 
   const filteredRules = sortPropFirmRules(
     propFirmRules.filter((rule) => rule.propFirmId === selectedPropFirmId),
@@ -55,6 +61,12 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
   const promoValue = Number(promoPercent || 0);
   const promo = Number.isNaN(promoValue) ? 0 : Math.min(Math.max(promoValue, 0), 100);
   const realCost = baseCost > 0 ? baseCost * (1 - promo / 100) : null;
+
+  useEffect(() => {
+    if (!manualPurchasePrice) {
+      setPurchasePrice(formatPriceInput(realCost));
+    }
+  }, [manualPurchasePrice, realCost]);
 
   return (
     <form
@@ -88,6 +100,7 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             onChange={(event) => {
               setSelectedPropFirmId(event.target.value);
               setSelectedRuleId("");
+              setManualPurchasePrice(false);
             }}
           >
             <option value="">Selectionner</option>
@@ -104,7 +117,10 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             name="propFirmRuleId"
             required
             value={selectedRuleId}
-            onChange={(event) => setSelectedRuleId(event.target.value)}
+            onChange={(event) => {
+              setSelectedRuleId(event.target.value);
+              setManualPurchasePrice(false);
+            }}
           >
             <option value="">Selectionner</option>
             {filteredRules.map((rule) => (
@@ -123,6 +139,7 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             onChange={(event) => {
               setSelectedAccountType(event.target.value);
               setSelectedRuleId("");
+              setManualPurchasePrice(false);
             }}
           >
             {accountTypeOptions.map((option) => (
@@ -140,8 +157,31 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
             name="promoPercent"
             type="number"
             value={promoPercent}
-            onChange={(event) => setPromoPercent(event.target.value)}
+            onChange={(event) => {
+              setPromoPercent(event.target.value);
+              setManualPurchasePrice(false);
+            }}
           />
+          <small className="field-hint">
+            {selectedRule
+              ? `Coût règle ${baseCost.toFixed(2)} USD${realCost !== null ? ` - après promo ${realCost.toFixed(2)} USD` : ""}`
+              : "Sélectionnez une règle pour calculer le coût après promo."}
+          </small>
+        </label>
+        <label className="form-field">
+          <span>Montant payé USD</span>
+          <input
+            min="0"
+            name="purchasePrice"
+            step="any"
+            type="number"
+            value={purchasePrice}
+            onChange={(event) => {
+              setManualPurchasePrice(true);
+              setPurchasePrice(event.target.value);
+            }}
+          />
+          <small className="field-hint">Modifiable si un autre code ou une remise spéciale a été appliqué.</small>
         </label>
         {selectedAccountType === "FUNDED" ? (
           <Field label="Date activation" name="activationDate" type="date" required defaultValue={today} />
@@ -149,12 +189,6 @@ export function AccountForm({ propFirms, propFirmRules, onCancel, onSuccess }: A
         <SelectField label="Statut" name="status" options={statusOptions} defaultValue="ACTIVE" required />
         <TextArea label="Notes" name="notes" />
       </div>
-      {selectedRule ? (
-        <p className="form-note">
-          Coût règle: {baseCost.toFixed(2)} USD
-          {realCost !== null ? ` - Coût réel: ${realCost.toFixed(2)} USD` : ""}
-        </p>
-      ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       <div className="form-actions split">
         <button className="button secondary" disabled={isSubmitting} type="button" onClick={onCancel}>

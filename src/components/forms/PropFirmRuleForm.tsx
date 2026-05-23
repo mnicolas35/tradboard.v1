@@ -107,7 +107,8 @@ export function PropFirmRuleForm({
           <Field label="Consistance" name="fundedConsistencyPercent" step="any" type="number" defaultValue={initialRule?.fundedConsistencyPercent ?? undefined} />
           <Field label="Jours de trade minimum" name="minTradingDaysForPayout" type="number" defaultValue={initialRule?.minTradingDaysForPayout ?? undefined} />
           <Field label="Montant minimum par jour" name="minDailyProfitForPayout" step="any" type="number" defaultValue={initialRule?.minDailyProfitForPayout ?? undefined} />
-          <Field label="Part trader" name="traderSharePercent" step="any" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
+          <Field label="Part trader apres palier" name="traderSharePercent" step="any" type="number" defaultValue={initialRule?.traderSharePercent ?? undefined} />
+          <Field label="100% trader jusqu'a" name="traderFullShareUntilAmount" step="any" type="number" defaultValue={initialRule?.traderFullShareUntilAmount ?? undefined} />
           <DrawdownTypeToggle name="fundedDrawdownType" defaultValue={initialRule?.fundedDrawdownType ?? "EOD"} />
         </div>
       </div>

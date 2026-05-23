@@ -301,6 +301,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const targetValue = ruleTarget === null ? null : `${formatCurrency(account.currentResultUsd)} / ${formatCurrency(ruleTarget)}`;
   const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
   const payoutValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.availableAmount) : "-";
+  const payoutNetValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.netAmount) : null;
   const accountCostTotal = account.costHistory.reduce((sum, line) => sum + line.amount, 0);
   const closeOptions = ["CLOSED"];
   const isActiveEvaluation = account.accountType === "EVALUATION" && account.status === "ACTIVE";
@@ -496,6 +497,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
               </button>
             </div>
             <strong>{payoutValue}</strong>
+            {payoutNetValue ? <small>Net trader: {payoutNetValue}</small> : null}
             {account.accountType === "FUNDED" && account.payoutEligibility.reasons.length > 0 ? (
               <small>{account.payoutEligibility.reasons[0]}</small>
             ) : null}
