@@ -8,7 +8,7 @@
 -- ============================================================================
 
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'USER');
+CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'CONTRIBUTOR', 'USER');
 
 -- CreateEnum
 CREATE TYPE "AccountType" AS ENUM ('EVALUATION', 'PA', 'FUNDED');

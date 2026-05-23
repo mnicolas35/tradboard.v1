@@ -11,10 +11,20 @@ type AddPropFirmRuleModalProps = {
   mode?: "create" | "edit";
   propFirm?: { id: string; label: string } | null;
   allowStandardToggle?: boolean;
+  defaultStandardRule?: boolean;
   onClose: () => void;
 };
 
-export function AddPropFirmRuleModal({ isOpen, propFirms, initialRule, mode, propFirm, allowStandardToggle = false, onClose }: AddPropFirmRuleModalProps) {
+export function AddPropFirmRuleModal({
+  isOpen,
+  propFirms,
+  initialRule,
+  mode,
+  propFirm,
+  allowStandardToggle = false,
+  defaultStandardRule = false,
+  onClose
+}: AddPropFirmRuleModalProps) {
   const isQuickAdd = Boolean(propFirm);
   const isDuplicate = mode === "create" && Boolean(initialRule);
   const title = isDuplicate
@@ -35,6 +45,7 @@ export function AddPropFirmRuleModal({ isOpen, propFirms, initialRule, mode, pro
         propFirmLabel={propFirm?.label ?? null}
         compact={isQuickAdd || isDuplicate}
         allowStandardToggle={allowStandardToggle}
+        defaultStandardRule={defaultStandardRule}
         onCancel={onClose}
         onSuccess={onClose}
       />

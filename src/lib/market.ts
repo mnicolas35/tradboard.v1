@@ -1,4 +1,5 @@
 export type MarketRange = "1d" | "7d" | "1m" | "3m" | "6m";
+export type MarketSource = "YAHOO";
 
 export type MarketSearchResult = {
   query: string;
@@ -13,7 +14,7 @@ export type MarketSearchResult = {
   activeContractMonth: number | null;
   activeContractYear: number | null;
   feedSymbol: string;
-  source: "YAHOO";
+  source: MarketSource;
 };
 
 export type MarketSeries = {
@@ -21,7 +22,7 @@ export type MarketSeries = {
   price: number | null;
   changePercent: number | null;
   points: number[];
-  source: "YAHOO";
+  source: MarketSource;
   updatedAt: string;
 };
 
@@ -60,6 +61,17 @@ export function marketColor(index: number) {
 
 function normalizedQuery(query: string) {
   return query.trim().toUpperCase().replace(/[^A-Z0-9.=^-]/g, "");
+}
+
+function emptyMarketSeries(symbol: string): MarketSeries {
+  return {
+    symbol,
+    price: null,
+    changePercent: null,
+    points: [],
+    source: "YAHOO",
+    updatedAt: new Date().toISOString()
+  };
 }
 
 function activeFutureContract(root: string, now = new Date()) {
@@ -196,7 +208,7 @@ export async function getMarketSeries(symbol: string, range: MarketRange): Promi
   });
 
   if (!response.ok) {
-    return { symbol, price: null, changePercent: null, points: [], source: "YAHOO", updatedAt: new Date().toISOString() };
+    return emptyMarketSeries(symbol);
   }
 
   const data = await response.json() as {

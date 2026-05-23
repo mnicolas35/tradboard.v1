@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { deleteUser, updateUserAdminRole } from "@/server/actions/auth-actions";
+import { deleteUser, updateUserRole } from "@/server/actions/auth-actions";
 import type { UserSummary } from "@/types";
 
 type UserManagerProps = {
@@ -10,7 +10,9 @@ type UserManagerProps = {
 };
 
 function roleLabel(role: string) {
-  return role === "ADMIN" ? "admin" : "utilisateur";
+  if (role === "ADMIN") return "Admin";
+  if (role === "CONTRIBUTOR") return "Contributeur";
+  return "Utilisateur";
 }
 
 function formatRegistrationDate(value: string) {
@@ -25,18 +27,21 @@ function formatNullableDate(value: string | null) {
   return value ? formatRegistrationDate(value) : "-";
 }
 
-function AdminCheckbox({ defaultChecked, disabled }: { defaultChecked: boolean; disabled: boolean }) {
+function RoleSelect({ defaultValue, disabled }: { defaultValue: string; disabled: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <input
-      aria-label="Role admin"
-      defaultChecked={defaultChecked}
+    <select
+      aria-label="Role utilisateur"
+      defaultValue={defaultValue}
       disabled={disabled || pending}
-      name="isAdmin"
-      type="checkbox"
+      name="role"
       onChange={(event) => event.currentTarget.form?.requestSubmit()}
-    />
+    >
+      <option value="USER">Utilisateur</option>
+      <option value="ADMIN">Admin</option>
+      <option value="CONTRIBUTOR">Contributeur</option>
+    </select>
   );
 }
 
@@ -68,15 +73,25 @@ export function UserManager({ users, currentUserId }: UserManagerProps) {
         <p className="empty-state">Aucun utilisateur actif.</p>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className="compact-table user-manager-table">
+            <colgroup>
+              <col />
+              <col />
+              <col />
+              <col />
+              <col className="current-role-column" />
+              <col className="role-selection-column" />
+              <col />
+            </colgroup>
             <thead>
               <tr>
                 <th>User</th>
                 <th>Mail</th>
                 <th>Date creation</th>
-                <th>Derniere connexion</th>
-                <th>Admin</th>
-                <th>Actions</th>
+                <th>Date connexion</th>
+                <th>Role user</th>
+                <th>Modification</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -88,12 +103,15 @@ export function UserManager({ users, currentUserId }: UserManagerProps) {
                   <td>{user.email}</td>
                   <td>{formatRegistrationDate(user.createdAt)}</td>
                   <td>{formatNullableDate(user.lastLoginAt)}</td>
-                  <td>
-                    <form action={updateUserAdminRole} className="inline-admin-form">
+                  <td className="current-role-cell">
+                    <span className="role-pill">{roleLabel(user.role)}</span>
+                  </td>
+                  <td className="role-selection-cell">
+                    <form action={updateUserRole} className="inline-admin-form">
                       <input name="userId" type="hidden" value={user.id} />
-                      <label className="check-field compact-check">
-                        <AdminCheckbox defaultChecked={user.role === "ADMIN"} disabled={user.id === currentUserId} />
-                        <span>{roleLabel(user.role)}</span>
+                      <label className="compact-field role-select-field">
+                        <span className="sr-only">Role a appliquer</span>
+                        <RoleSelect defaultValue={user.role} disabled={user.id === currentUserId} />
                       </label>
                     </form>
                   </td>

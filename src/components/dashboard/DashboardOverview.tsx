@@ -60,6 +60,16 @@ function monthPeriod(date: Date, offset = 0) {
   };
 }
 
+function monthPeriodFromValues(year: number, month: number) {
+  return monthPeriod(new Date(year, month, 1));
+}
+
+function addDays(dateStr: string, days: number) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function accountLabel(account: AppData["accounts"][number]) {
   return account.accountNumber ? `#${account.accountNumber}` : "Sans numero";
 }
@@ -373,9 +383,109 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
   const [marketStatus, setMarketStatus] = useState<string | null>(null);
   const [draggedMarketId, setDraggedMarketId] = useState<string | null>(null);
   const { year, month, date } = currentPeriod();
+  const [selectedAnnualYear, setSelectedAnnualYear] = useState(() => currentPeriod().year);
+  const [selectedMonthlyPeriod, setSelectedMonthlyPeriod] = useState(() => {
+    const period = currentPeriod();
+    return { year: period.year, month: period.month };
+  });
   const currentMonth = monthPeriod(date);
-  const previousMonths = [-1, -2, -3].map((offset) => monthPeriod(date, offset));
+  const selectedMonth = monthPeriodFromValues(selectedMonthlyPeriod.year, selectedMonthlyPeriod.month);
+  const selectedMonthDate = new Date(selectedMonth.year, selectedMonth.month, 1);
+  const previousMonths = [-1, -2, -3].map((offset) => monthPeriod(selectedMonthDate, offset));
   const activeAccounts = data.accounts.filter((account) => account.status === "ACTIVE");
+  const activeFundedAccounts = activeAccounts.filter((account) => account.accountType === "FUNDED");
+  const activeEvaluationAccounts = activeAccounts.filter((account) => account.accountType === "EVALUATION");
+  const activeFundedAccountBalance = sum(activeFundedAccounts.map((account) => account.accountBalanceUsd));
+  const activeFundedAccountSize = sum(activeFundedAccounts.map((account) => account.accountSize));
+  const activeFundedPayoutsPaid = sum(activeFundedAccounts.map((account) => account.payoutsPaidUsd));
+  const fundedGainTotal = activeFundedAccountBalance - activeFundedAccountSize - activeFundedPayoutsPaid;
+  const fundedGainEvents = activeFundedAccounts
+    .flatMap((account) => [
+      ...account.tradeEntries.map((trade) => ({
+        date: trade.tradeDate,
+        createdAt: trade.createdAt,
+        amount: trade.profitLossUsd,
+        type: "trade" as const
+      })),
+      ...account.payouts
+        .filter((payout) => payout.status === "PAID")
+        .map((payout) => ({
+          date: addDays(payout.date, 1),
+          createdAt: payout.createdAt ?? `${payout.date}T23:59:59.999Z`,
+          amount: payout.amount,
+          type: "payout" as const
+        }))
+    ])
+    .sort((a, b) => (
+      a.date.localeCompare(b.date) ||
+      (a.type === b.type ? 0 : a.type === "payout" ? -1 : 1) ||
+      a.createdAt.localeCompare(b.createdAt)
+    ));
+  let fundedRunningBalance = activeFundedAccountSize;
+  let fundedRunningPayouts = 0;
+  const fundedGainSeries = fundedGainEvents.map((event) => {
+    if (event.type === "trade") {
+      fundedRunningBalance += event.amount;
+    } else {
+      fundedRunningBalance -= event.amount;
+      fundedRunningPayouts += event.amount;
+    }
+
+    return {
+      date: event.date,
+      value: fundedRunningBalance - activeFundedAccountSize - fundedRunningPayouts,
+      type: event.type
+    };
+  });
+  if (fundedGainSeries.length > 0) {
+    fundedGainSeries[fundedGainSeries.length - 1] = {
+      ...fundedGainSeries[fundedGainSeries.length - 1],
+      value: fundedGainTotal
+    };
+  }
+  const fundedGainValues = fundedGainSeries.map((point) => point.value);
+  const fundedGainMin = Math.min(0, ...fundedGainValues);
+  const fundedGainMax = Math.max(0, ...fundedGainValues);
+  const fundedGainRange = Math.max(1, fundedGainMax - fundedGainMin);
+  const fundedGainChartWidth = 320;
+  const fundedGainChartHeight = 120;
+  const fundedGainChartPadding = 12;
+  const fundedGainX = (index: number) => (
+    fundedGainChartPadding +
+    (fundedGainSeries.length <= 1 ? 0.5 : index / (fundedGainSeries.length - 1)) *
+    (fundedGainChartWidth - fundedGainChartPadding * 2)
+  );
+  const fundedGainY = (value: number) => (
+    fundedGainChartPadding +
+    ((fundedGainMax - value) / fundedGainRange) *
+    (fundedGainChartHeight - fundedGainChartPadding * 2)
+  );
+  const fundedGainPoints = fundedGainSeries
+    .map((point, index) => `${fundedGainX(index).toFixed(1)},${fundedGainY(point.value).toFixed(1)}`)
+    .join(" ");
+  const fundedGainZeroY = fundedGainY(0);
+  const completedEvaluations = data.accounts.filter((account) => (
+    account.accountType === "EVALUATION" &&
+    (account.status === "PASSED" || account.status === "CLOSED" || account.status === "FAILED")
+  ));
+  const evaluationRoiByPropFirm = [...completedEvaluations
+    .reduce<Map<string, { acronym: string; name: string; total: number; passed: number }>>((rows, account) => {
+      const current = rows.get(account.propFirmId) ?? {
+        acronym: account.propFirmAcronym,
+        name: account.propFirmName,
+        total: 0,
+        passed: 0
+      };
+
+      rows.set(account.propFirmId, {
+        ...current,
+        total: current.total + 1,
+        passed: current.passed + (account.status === "PASSED" ? 1 : 0)
+      });
+
+      return rows;
+    }, new Map()).values()]
+    .sort((a, b) => a.name.localeCompare(b.name));
   const propFirmCounts = activeAccounts
     .reduce<Map<string, { name: string; count: number }>>((counts, account) => {
       const current = counts.get(account.propFirmId) ?? { name: account.propFirmName, count: 0 };
@@ -440,10 +550,10 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
   const costLines = costCarrierAccounts.flatMap((account) => (
     account.costHistory.map((cost) => ({ ...cost, propFirmId: account.propFirmId, propFirmName: account.propFirmName }))
   ));
-  const annualCosts = sum(costLines.filter((cost) => isInYear(cost.date, year)).map((cost) => cost.amount));
-  const monthlyCosts = sum(costLines.filter((cost) => isInMonth(cost.date, year, month)).map((cost) => cost.amount));
+  const annualCosts = sum(costLines.filter((cost) => isInYear(cost.date, selectedAnnualYear)).map((cost) => cost.amount));
+  const monthlyCosts = sum(costLines.filter((cost) => isInMonth(cost.date, selectedMonth.year, selectedMonth.month)).map((cost) => cost.amount));
   const annualCostsByPropFirm = [...costLines
-    .filter((cost) => isInYear(cost.date, year))
+    .filter((cost) => isInYear(cost.date, selectedAnnualYear))
     .reduce<Map<string, { name: string; amount: number }>>((rows, cost) => {
       const current = rows.get(cost.propFirmId) ?? { name: cost.propFirmName, amount: 0 };
       rows.set(cost.propFirmId, { ...current, amount: current.amount + cost.amount });
@@ -452,7 +562,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     .values()]
     .sort((a, b) => a.name.localeCompare(b.name));
   const monthlyCostsByPropFirm = [...costLines
-    .filter((cost) => isInMonth(cost.date, year, month))
+    .filter((cost) => isInMonth(cost.date, selectedMonth.year, selectedMonth.month))
     .reduce<Map<string, { name: string; amount: number }>>((rows, cost) => {
       const current = rows.get(cost.propFirmId) ?? { name: cost.propFirmName, amount: 0 };
       rows.set(cost.propFirmId, { ...current, amount: current.amount + cost.amount });
@@ -465,7 +575,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     monthlyPayoutMap.set(row.name, { name: row.name, invested: row.amount, payoutNet: 0 });
   });
   paidPayouts
-    .filter((payout) => isInMonth(payout.date, year, month))
+    .filter((payout) => isInMonth(payout.date, selectedMonth.year, selectedMonth.month))
     .forEach((payout) => {
       const current = monthlyPayoutMap.get(payout.propFirmName) ?? {
         name: payout.propFirmName,
@@ -478,8 +588,10 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     .filter((row) => row.invested > 0 || row.payoutNet > 0)
     .map((row) => ({ ...row, difference: row.payoutNet - row.invested }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const annualBalance = annualPayouts - annualCosts;
-  const monthlyBalance = monthlyPayouts - monthlyCosts;
+  const selectedAnnualPayouts = sum(paidPayouts.filter((payout) => isInYear(payout.date, selectedAnnualYear)).map((payout) => payout.amount));
+  const selectedMonthlyPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, selectedMonth.year, selectedMonth.month)).map((payout) => payout.amount));
+  const annualBalance = selectedAnnualPayouts - annualCosts;
+  const monthlyBalance = selectedMonthlyPayouts - monthlyCosts;
   const previousMonthlyBalances = previousMonths.map((period) => {
     const periodPayouts = sum(paidPayouts.filter((payout) => isInMonth(payout.date, period.year, period.month)).map((payout) => payout.amount));
     const periodCosts = sum(costLines.filter((cost) => isInMonth(cost.date, period.year, period.month)).map((cost) => cost.amount));
@@ -516,7 +628,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     });
   });
   paidPayouts
-    .filter((payout) => isInYear(payout.date, year))
+    .filter((payout) => isInYear(payout.date, selectedAnnualYear))
     .forEach((payout) => {
       const current = annualPropFirmMap.get(payout.propFirmName) ?? {
         acronym: propFirmAcronyms.get(payout.propFirmName) ?? payout.propFirmName,
@@ -713,6 +825,21 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
     });
   }
 
+  function shiftAnnualPeriod(offset: number) {
+    setSelectedAnnualYear((current) => current + offset);
+  }
+
+  function shiftMonthlyPeriod(offset: number) {
+    setSelectedMonthlyPeriod((current) => {
+      const next = new Date(current.year, current.month + offset, 1);
+
+      return {
+        year: next.getFullYear(),
+        month: next.getMonth()
+      };
+    });
+  }
+
   function allowMarketDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -781,12 +908,28 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
               <h2>Bilan</h2>
             </div>
             <div className="global-kpi-list">
-              <div className="global-kpi-row emphasis">
-                <span>Bilan annuel</span>
+              <div className="global-kpi-row emphasis period-kpi-row">
+                <span className="global-period-selector" aria-label={`Bilan ${selectedAnnualYear}`}>
+                  <button type="button" onClick={() => shiftAnnualPeriod(-1)} aria-label="Afficher l'année précédente">
+                    &lt;
+                  </button>
+                  <span>{selectedAnnualYear}</span>
+                  <button type="button" onClick={() => shiftAnnualPeriod(1)} aria-label="Afficher l'année suivante">
+                    &gt;
+                  </button>
+                </span>
                 <strong className={annualBalance >= 0 ? "tone-positive" : "tone-negative"}>{formatCurrency(annualBalance)}</strong>
               </div>
-              <div className="global-kpi-row emphasis">
-                <span>Bilan {currentMonth.label}</span>
+              <div className="global-kpi-row emphasis period-kpi-row">
+                <span className="global-period-selector" aria-label={`Bilan ${selectedMonth.label} ${selectedMonth.year}`}>
+                  <button type="button" onClick={() => shiftMonthlyPeriod(-1)} aria-label="Afficher le mois précédent">
+                    &lt;
+                  </button>
+                  <span>{selectedMonth.label} {selectedMonth.year}</span>
+                  <button type="button" onClick={() => shiftMonthlyPeriod(1)} aria-label="Afficher le mois suivant">
+                    &gt;
+                  </button>
+                </span>
                 <strong className={monthlyBalance >= 0 ? "tone-positive" : "tone-negative"}>{formatCurrency(monthlyBalance)}</strong>
               </div>
             </div>
@@ -794,7 +937,7 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
           <div className="global-kpi-list global-kpi-bottom">
             {previousMonthlyBalances.map((row) => (
               <div className="global-kpi-row" key={`${row.year}-${row.month}`}>
-                <span>Bilan {row.label}</span>
+                <span>Bilan {row.label} {row.year}</span>
                 <strong className={row.balance >= 0 ? "tone-positive" : "tone-negative"}>{formatCurrency(row.balance)}</strong>
               </div>
             ))}
@@ -807,8 +950,16 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
               <h2>Cout investi</h2>
             </div>
             <div className="global-kpi-list">
-              <div className="global-kpi-row emphasis">
-                <span>Annuel</span>
+              <div className="global-kpi-row emphasis period-kpi-row">
+                <span className="global-period-selector" aria-label={`Cout investi ${selectedAnnualYear}`}>
+                  <button type="button" onClick={() => shiftAnnualPeriod(-1)} aria-label="Afficher l'année précédente">
+                    &lt;
+                  </button>
+                  <span>{selectedAnnualYear}</span>
+                  <button type="button" onClick={() => shiftAnnualPeriod(1)} aria-label="Afficher l'année suivante">
+                    &gt;
+                  </button>
+                </span>
                 <strong>{formatCurrency(annualCosts)}</strong>
               </div>
               {annualCostsByPropFirm.length === 0 ? (
@@ -823,8 +974,16 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
               )}
             </div>
             <div className="global-kpi-list">
-              <div className="global-kpi-row emphasis">
-                <span>{currentMonth.label}</span>
+              <div className="global-kpi-row emphasis period-kpi-row">
+                <span className="global-period-selector" aria-label={`Cout investi ${selectedMonth.label} ${selectedMonth.year}`}>
+                  <button type="button" onClick={() => shiftMonthlyPeriod(-1)} aria-label="Afficher le mois précédent">
+                    &lt;
+                  </button>
+                  <span>{selectedMonth.label} {selectedMonth.year}</span>
+                  <button type="button" onClick={() => shiftMonthlyPeriod(1)} aria-label="Afficher le mois suivant">
+                    &gt;
+                  </button>
+                </span>
                 <strong>{formatCurrency(monthlyCosts)}</strong>
               </div>
               {monthlyCostsByPropFirm.length === 0 ? (
@@ -839,6 +998,80 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
               )}
             </div>
           </div>
+        </section>
+      </div>
+
+      <div className="global-management-grid">
+        <section className="panel global-management-card">
+          <div className="global-management-main">
+            <div className="global-kpi-header">
+              <h2>Gestion</h2>
+            </div>
+            <div className="global-kpi-list">
+              <div className="global-kpi-row emphasis">
+                <span>Compte funded : {activeFundedAccounts.length}</span>
+                <strong>{formatCurrency(activeFundedAccountBalance)}</strong>
+              </div>
+              <div className="global-kpi-row emphasis">
+                <span>Compte eval : {activeEvaluationAccounts.length}</span>
+                <strong aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+          <div className="global-management-roi">
+            <span>ROI evaluations par propfirm</span>
+            {evaluationRoiByPropFirm.length === 0 ? (
+              <p className="global-kpi-empty">Aucune evaluation terminee.</p>
+            ) : (
+              <div className="global-management-roi-list">
+                {evaluationRoiByPropFirm.map((row) => (
+                  <div className="global-management-roi-row" key={row.name}>
+                    <span>{row.acronym}</span>
+                    <strong>{((row.passed / row.total) * 100).toFixed(1)}%</strong>
+                    <small>{row.passed}/{row.total}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+        <section className="panel global-management-card funded-gain-card">
+          <div className="global-summary-head">
+            <h2>Performances</h2>
+            <strong className={fundedGainTotal >= 0 ? "tone-positive" : "tone-negative"}>{formatCurrency(fundedGainTotal)}</strong>
+          </div>
+          {fundedGainSeries.length === 0 ? (
+            <p className="global-kpi-empty">Aucun compte funded actif.</p>
+          ) : (
+            <div className="funded-gain-chart" aria-label="Evolution globale des gains funded actifs">
+              <svg className="funded-gain-line-chart" viewBox={`0 0 ${fundedGainChartWidth} ${fundedGainChartHeight}`} role="img">
+                <line className="funded-gain-zero" x1="0" x2={fundedGainChartWidth} y1={fundedGainZeroY} y2={fundedGainZeroY} />
+                <polyline className="funded-gain-line" fill="none" points={fundedGainPoints} />
+                {fundedGainSeries.map((point, index) => (
+                  point.type === "payout" ? (
+                    <circle
+                      className="funded-payout-dot"
+                      cx={fundedGainX(index)}
+                      cy={fundedGainY(point.value)}
+                      key={`${point.date}-${index}`}
+                      r="3.2"
+                    />
+                  ) : null
+                ))}
+                <circle
+                  className={fundedGainTotal >= 0 ? "funded-gain-dot positive" : "funded-gain-dot negative"}
+                  cx={fundedGainX(fundedGainSeries.length - 1)}
+                  cy={fundedGainY(fundedGainTotal)}
+                  r="3.8"
+                />
+              </svg>
+              <div className="funded-gain-chart-foot">
+                <span>{fundedGainSeries[0]?.date}</span>
+                <strong>{fundedGainSeries.length} mouvements</strong>
+                <span>{fundedGainSeries[fundedGainSeries.length - 1]?.date}</span>
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -972,11 +1205,11 @@ export function DashboardOverview({ data }: DashboardOverviewProps) {
         <section className="panel global-pie-panel">
           <div className="global-pie-card">
             <div className="global-pie-head">
-              <h3>Bilan annuel par propfirm</h3>
+              <h3>Bilan par propfirm {selectedAnnualYear}</h3>
               <span>{formatCurrency(annualPieTotal)}</span>
             </div>
             <div className="global-pie-layout">
-              <svg className="global-pie" viewBox="0 0 240 240" role="img" aria-label="Repartition annuelle par propfirm">
+              <svg className="global-pie" viewBox="0 0 240 240" role="img" aria-label="Repartition par propfirm">
                 {pieSlices.length === 0 ? (
                   <circle cx="120" cy="120" fill="#e5e7eb" r="92" stroke="#000" strokeWidth="1.25" />
                 ) : (

@@ -98,7 +98,7 @@ export type UserSummary = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "USER" | string;
+  role: "ADMIN" | "CONTRIBUTOR" | "USER" | string;
   createdAt: string;
   lastLoginAt: string | null;
 };

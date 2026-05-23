@@ -24,6 +24,7 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
   const [view, setView] = useState<AppView>("dashboard");
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const isAdmin = data.currentUser.role === "ADMIN";
+  const canCreateSharedPropFirmRules = isAdmin || data.currentUser.role === "CONTRIBUTOR";
 
   const selectedAccount = useMemo(() => {
     if (!view.startsWith("account:")) {
@@ -45,6 +46,7 @@ export function TradBoardApp({ data }: TradBoardAppProps) {
         propFirms={data.propFirmDetails}
         propFirmRules={data.propFirmRules}
         isAdmin={isAdmin}
+        canCreateSharedRules={canCreateSharedPropFirmRules}
         currentUserId={data.currentUser.id}
       />
     );

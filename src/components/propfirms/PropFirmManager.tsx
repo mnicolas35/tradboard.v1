@@ -13,10 +13,11 @@ type PropFirmManagerProps = {
   propFirms: AppData["propFirmDetails"];
   propFirmRules: AppData["propFirmRules"];
   isAdmin: boolean;
+  canCreateSharedRules: boolean;
   currentUserId: string;
 };
 
-export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUserId }: PropFirmManagerProps) {
+export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSharedRules, currentUserId }: PropFirmManagerProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"firm" | null>(null);
@@ -35,7 +36,7 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
   const deletingRule = deletingRuleId ? rulesById.get(deletingRuleId) ?? null : null;
 
   function canManageRule(rule: { isStandard: boolean; createdByUserId: string | null }) {
-    return isAdmin || (!rule.isStandard && rule.createdByUserId === currentUserId);
+    return isAdmin || rule.createdByUserId === currentUserId;
   }
 
   return (
@@ -239,7 +240,8 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
         isOpen={Boolean(quickRuleFirm)}
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         propFirm={quickRuleFirm}
-        allowStandardToggle={isAdmin}
+        allowStandardToggle={canCreateSharedRules}
+        defaultStandardRule={canCreateSharedRules}
         onClose={() => setQuickRuleFirm(null)}
       />
       <AddPropFirmRuleModal
@@ -247,7 +249,7 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={editingRule}
         mode="edit"
-        allowStandardToggle={isAdmin}
+        allowStandardToggle={canCreateSharedRules}
         onClose={() => setEditingRuleId(null)}
       />
       <AddPropFirmRuleModal
@@ -255,7 +257,8 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, currentUser
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={duplicatingRule}
         mode="create"
-        allowStandardToggle={isAdmin}
+        allowStandardToggle={canCreateSharedRules}
+        defaultStandardRule={canCreateSharedRules}
         onClose={() => setDuplicatingRuleId(null)}
       />
       <Modal isOpen={Boolean(deletingRule)} title="Supprimer cette règle ?" onClose={() => setDeletingRuleId(null)}>

@@ -112,7 +112,7 @@ function accountType(formData: FormData): AccountType {
 
 function accountStatus(formData: FormData): AccountStatus {
   const value = requiredText(formData, "status");
-  const values: AccountStatus[] = ["ACTIVE", "PASSED", "FAILED", "CLOSED"];
+  const values: AccountStatus[] = ["ACTIVE", "PASSED", "CLOSED"];
 
   if (!values.includes(value as AccountStatus)) {
     throw new Error("Statut invalide.");
@@ -241,6 +241,10 @@ async function assertAdmin() {
   return currentUser;
 }
 
+function canCreateSharedPropFirmRules(role: string) {
+  return role === "ADMIN" || role === "CONTRIBUTOR";
+}
+
 async function assertOwnAccount(accountId: string, userId: string) {
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId },
@@ -282,7 +286,7 @@ export async function createPropFirm(formData: FormData) {
 export async function createPropFirmRule(formData: FormData) {
   const currentUser = await getCurrentUser();
   const requestedStandard = formData.get("isStandard") === "on";
-  const isStandard = currentUser.role === "ADMIN" ? requestedStandard : false;
+  const isStandard = canCreateSharedPropFirmRules(currentUser.role) ? requestedStandard : false;
   const propFirmId = requiredText(formData, "propFirmId");
   const accountSize = requiredDecimal(formData, "accountSize");
   const propFirm = await prisma.propFirm.findUnique({
@@ -299,7 +303,7 @@ export async function createPropFirmRule(formData: FormData) {
   await prisma.propFirmRule.create({
     data: {
       propFirmId,
-      createdByUserId: isStandard ? null : currentUser.id,
+      createdByUserId: currentUser.role === "ADMIN" && isStandard ? null : currentUser.id,
       name: ruleName,
       accountType: requiredText(formData, "accountType") as AccountType,
       accountSize,
@@ -351,9 +355,9 @@ async function assertCanManagePropFirmRule(ruleId: string) {
     throw new Error("Regle introuvable.");
   }
 
-  const canManage = currentUser.role === "ADMIN" || (!rule.isStandard && rule.createdByUserId === currentUser.id);
+  const canManage = currentUser.role === "ADMIN" || rule.createdByUserId === currentUser.id;
   if (!canManage) {
-    throw new Error("Vous ne pouvez modifier que vos regles custom.");
+    throw new Error("Vous ne pouvez modifier que vos regles.");
   }
 
   return { currentUser, rule };
@@ -363,7 +367,7 @@ export async function updatePropFirmRule(formData: FormData) {
   const id = requiredText(formData, "id");
   const { currentUser, rule } = await assertCanManagePropFirmRule(id);
   const requestedStandard = formData.get("isStandard") === "on";
-  const isStandard = currentUser.role === "ADMIN" ? requestedStandard : false;
+  const isStandard = canCreateSharedPropFirmRules(currentUser.role) ? requestedStandard : false;
   const propFirmId = optionalText(formData, "propFirmId") ?? rule.propFirmId;
 
   await prisma.$transaction([
@@ -371,7 +375,7 @@ export async function updatePropFirmRule(formData: FormData) {
       where: { id },
       data: {
         propFirm: { connect: { id: propFirmId } },
-        createdByUser: isStandard
+        createdByUser: currentUser.role === "ADMIN" && isStandard
           ? { disconnect: true }
           : { connect: { id: rule.createdByUserId ?? currentUser.id } },
         name: requiredText(formData, "name"),
@@ -836,7 +840,7 @@ export async function closeAccount(formData: FormData) {
   const accountId = requiredText(formData, "accountId");
   const closeStatus = requiredText(formData, "closeStatus");
 
-  if (closeStatus !== "FAILED" && closeStatus !== "PASSED" && closeStatus !== "CLOSED") {
+  if (closeStatus !== "CLOSED") {
     throw new Error("Statut de fermeture invalide.");
   }
 
@@ -847,14 +851,6 @@ export async function closeAccount(formData: FormData) {
 
   if (!account) {
     throw new Error("Compte introuvable pour cet utilisateur.");
-  }
-
-  if (account.accountType === "EVALUATION" && closeStatus === "CLOSED") {
-    throw new Error("Une evaluation ne peut etre fermee qu'en PASSED ou FAILED.");
-  }
-
-  if (account.accountType === "FUNDED" && closeStatus === "PASSED") {
-    throw new Error("Un compte funded ne peut pas etre ferme en PASSED.");
   }
 
   const updatedAccount = await prisma.account.update({
@@ -1017,10 +1013,13 @@ export async function resetEvaluation(formData: FormData) {
   const accountId = requiredText(formData, "accountId");
   const account = await prisma.account.findFirst({
     where: {
-      id: accountId,
-      userId: currentUser.id,
+      userId: currentUser.role === "ADMIN" ? undefined : currentUser.id,
       accountType: { in: ["EVALUATION", "FUNDED"] },
-      status: "ACTIVE"
+      status: { in: ["ACTIVE", "CLOSED", "FAILED"] },
+      OR: [
+        { id: accountId },
+        { accountNumber: accountId }
+      ]
     },
     include: {
       propFirmRule: true,
@@ -1036,6 +1035,10 @@ export async function resetEvaluation(formData: FormData) {
 
   if (!account.propFirmRule) {
     throw new Error("Regle introuvable pour cette evaluation.");
+  }
+
+  if (account.accountType === "EVALUATION" && account.status !== "ACTIVE" && account.status !== "FAILED") {
+    throw new Error("Une evaluation cloturee ne peut pas etre reset.");
   }
 
   const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
@@ -1084,11 +1087,11 @@ export async function resetEvaluation(formData: FormData) {
   const transactions: Prisma.PrismaPromise<unknown>[] = [
     prisma.account.update({
       where: { id: account.id },
-      data: { status: "FAILED" as AccountStatus }
+      data: { status: "CLOSED" as AccountStatus }
     }),
     prisma.account.create({
       data: {
-        userId: currentUser.id,
+        userId: account.userId,
         propFirmId: account.propFirmId,
         propFirmRuleId: account.propFirmRuleId,
         parentAccountId: account.id,
@@ -1108,60 +1111,16 @@ export async function resetEvaluation(formData: FormData) {
     })
   ];
 
-  const [failedAccount, resetAccount] = await prisma.$transaction(transactions);
+  const [closedAccount, resetAccount] = await prisma.$transaction(transactions);
   await writeAuditLog({
     userId: currentUser.id,
     entityType: "Account",
     entityId: account.id,
     action: account.accountType === "FUNDED" ? "RESET_FUNDED" : "RESET_EVALUATION",
     before: account,
-    after: failedAccount,
+    after: closedAccount,
     metadata: { createdResetAccount: resetAccount }
   });
-  refresh();
-}
-
-export async function closeFailedEvaluation(formData: FormData) {
-  const currentUser = await getCurrentUser();
-  const accountId = requiredText(formData, "accountId");
-  const account = await prisma.account.findFirst({
-    where: { id: accountId, userId: currentUser.id, accountType: "EVALUATION", status: "ACTIVE" },
-    include: { propFirmRule: true, ruleOverride: true, tradingDays: true }
-  });
-
-  if (!account) {
-    throw new Error("Evaluation introuvable pour cet utilisateur.");
-  }
-
-  if (!account.propFirmRule) {
-    throw new Error("Regle introuvable pour cette evaluation.");
-  }
-
-  const currentResultUsd = account.tradingDays.reduce((sum, day) => sum + Number(day.profitLoss), 0);
-  const resolvedRule = resolveAccountRule(account.propFirmRule, account.ruleOverride);
-  const eligibility = calculateEvaluationEligibility(
-    currentResultUsd,
-    evaluationDays(account.tradingDays, account.purchaseDate),
-    resolvedRule
-  );
-
-  if (!eligibility.isFailed) {
-    throw new Error("L'evaluation ne respecte pas les conditions d'echec.");
-  }
-
-  const failedAccount = await prisma.account.update({
-    where: { id: account.id },
-    data: { status: "FAILED" }
-  });
-  await writeAuditLog({
-    userId: currentUser.id,
-    entityType: "Account",
-    entityId: account.id,
-    action: "FAIL_EVALUATION",
-    before: account,
-    after: failedAccount
-  });
-
   refresh();
 }
 

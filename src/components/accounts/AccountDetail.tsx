@@ -10,7 +10,6 @@ import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/format";
 import {
   closeAccount,
-  closeFailedEvaluation,
   createPayout,
   deleteAccount,
   deletePayout,
@@ -24,7 +23,7 @@ type AccountDetailProps = {
   account: AccountSummary;
 };
 
-type DetailModal = "activation" | "delete" | "failed" | "reset" | "settings" | "trade" | "close" | "payout" | null;
+type DetailModal = "activation" | "delete" | "reset" | "settings" | "trade" | "close" | "payout" | null;
 type ChartRange = "all" | "7j" | "1M" | "3M" | "6M";
 
 const chartRanges: Array<{ id: ChartRange; label: string; months?: number; days?: number }> = [
@@ -303,14 +302,16 @@ export function AccountDetail({ account }: AccountDetailProps) {
   const payoutEligible = account.accountType === "FUNDED" && account.payoutEligibility.isEligible;
   const payoutValue = account.accountType === "FUNDED" ? formatCurrency(account.payoutEligibility.availableAmount) : "-";
   const accountCostTotal = account.costHistory.reduce((sum, line) => sum + line.amount, 0);
-  const closeOptions = account.accountType === "EVALUATION" ? ["FAILED", "PASSED"] : ["FAILED", "CLOSED"];
+  const closeOptions = ["CLOSED"];
   const isActiveEvaluation = account.accountType === "EVALUATION" && account.status === "ACTIVE";
   const isActiveFunded = account.accountType === "FUNDED" && account.status === "ACTIVE";
-  const isCrashedFunded = isActiveFunded && account.currentDrawdown !== null && account.currentDrawdown <= 0;
+  const isCrashedFunded = account.accountType === "FUNDED" && account.currentDrawdown !== null && account.currentDrawdown <= 0;
   const fundedResetPrice = account.rule?.defaultFundedResetPrice ?? 0;
   const canActivateEvaluation = isActiveEvaluation && account.evaluationEligibility.isEligible;
-  const canFailEvaluation = isActiveEvaluation && account.evaluationEligibility.isFailed;
+  const canCloseEvaluation = isActiveEvaluation && account.evaluationEligibility.isFailed;
   const canResetFunded = isCrashedFunded && fundedResetPrice > 0;
+  const canAddTrade = account.status === "ACTIVE";
+  const canCloseAccount = isActiveFunded && isCrashedFunded;
   const resetCostDefault = account.accountType === "FUNDED" ? fundedResetPrice : account.rule?.defaultResetPrice ?? 0;
   const tradingDaysStartDate = account.accountType === "FUNDED" ? account.activationDate : account.purchaseDate;
   const ruleTradingDays = tradingDaysFrom(account.dailyResults, tradingDaysStartDate);
@@ -403,13 +404,13 @@ export function AccountDetail({ account }: AccountDetailProps) {
                 Activation
               </button>
             ) : null}
-            {canFailEvaluation ? (
+            {canCloseEvaluation ? (
               <>
                 <button className="button danger" type="button" onClick={() => setModal("reset")}>
                   Reset
                 </button>
-                <button className="button danger" type="button" onClick={() => setModal("failed")}>
-                  Failed
+                <button className="button danger" type="button" onClick={() => setModal("close")}>
+                  Closed
                 </button>
               </>
             ) : null}
@@ -418,12 +419,11 @@ export function AccountDetail({ account }: AccountDetailProps) {
                 Reset
               </button>
             ) : null}
-            <button className="button secondary" type="button" onClick={() => setModal("trade")}>
-              Add trade
-            </button>
-            <button className="button danger" type="button" onClick={() => setModal("close")}>
-              Closed
-            </button>
+            {canCloseAccount ? (
+              <button className="button danger" type="button" onClick={() => setModal("close")}>
+                Closed
+              </button>
+            ) : null}
             <button
               aria-label="Modifier le compte"
               className="icon-button"
@@ -614,6 +614,13 @@ export function AccountDetail({ account }: AccountDetailProps) {
             status={chartStatus.status}
             statusLabel={chartStatus.label}
           />
+          {canAddTrade ? (
+            <div className="account-trade-action-row">
+              <button className="button secondary" type="button" onClick={() => setModal("trade")}>
+                Add trade
+              </button>
+            </div>
+          ) : null}
           <AccountPerformanceCalendar
             days={account.dailyResults}
             trades={account.tradeEntries}
@@ -801,30 +808,6 @@ export function AccountDetail({ account }: AccountDetailProps) {
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "failed"} title="Marquer failed" onClose={() => setModal(null)}>
-        <form
-          className="form-panel"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitAction(closeFailedEvaluation, new FormData(event.currentTarget));
-          }}
-        >
-          <div className="form-grid">
-            <input name="accountId" type="hidden" value={account.id} />
-            <p className="form-note wide">Cette evaluation sera classee en failed.</p>
-          </div>
-          {error ? <p className="form-error">{error}</p> : null}
-          <div className="form-actions split">
-            <button className="button secondary" type="button" onClick={() => setModal(null)}>
-              Annuler
-            </button>
-            <button className="button danger" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Classement..." : "Failed"}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
       <Modal isOpen={modal === "close"} title="Fermer le compte" onClose={() => setModal(null)}>
         <form
           className="form-panel"
@@ -836,8 +819,8 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <div className="form-grid">
             <input name="accountId" type="hidden" value={account.id} />
             {closeOptions.map((status) => (
-              <label className={status === "CLOSED" || status === "FAILED" ? "check-field danger" : "check-field"} key={status}>
-                <input name="closeStatus" required type="radio" value={status} />
+              <label className={status === "CLOSED" ? "check-field danger" : "check-field"} key={status}>
+                <input defaultChecked={closeOptions.length === 1} name="closeStatus" required type="radio" value={status} />
                 <span>{status}</span>
               </label>
             ))}

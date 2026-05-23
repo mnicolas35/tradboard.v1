@@ -477,12 +477,12 @@ h2 {
 }
 
 .global-kpi-header h2 {
-  font-size: 0.92rem;
+  font-size: 1rem;
   margin: 0;
 }
 
 .global-kpi-value {
-  font-size: 1.65rem;
+  font-size: 1.78rem;
   line-height: 1;
 }
 
@@ -501,12 +501,12 @@ h2 {
 .global-kpi-row span,
 .global-kpi-empty {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   margin: 0;
 }
 
 .global-kpi-row strong {
-  font-size: 0.86rem;
+  font-size: 0.92rem;
 }
 
 .global-kpi-row.emphasis {
@@ -519,7 +519,209 @@ h2 {
 }
 
 .global-kpi-row.emphasis strong {
-  font-size: 1rem;
+  font-size: 1.08rem;
+}
+
+.global-period-selector {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.global-period-selector button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  height: 20px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  flex: 0 0 20px;
+}
+
+.global-period-selector button:hover {
+  background: var(--surface-muted);
+  border-color: var(--accent);
+}
+
+.global-period-selector span {
+  color: inherit;
+  min-width: 0;
+}
+
+.period-kpi-row .global-period-selector > span {
+  font-size: 0.88rem;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-kpi-row strong {
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.global-management-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.global-management-card {
+  display: grid;
+  gap: 12px;
+  min-height: 190px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.global-management-main {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+}
+
+.global-management-roi {
+  align-self: end;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+}
+
+.global-management-roi > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.global-management-roi-list {
+  display: grid;
+  column-gap: 28px;
+  row-gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.global-management-roi-row {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  min-width: 0;
+}
+
+.global-management-roi-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-management-roi-row strong,
+.global-management-roi-row small {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.global-management-roi-row small {
+  color: var(--muted);
+}
+
+.funded-gain-card {
+  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.funded-gain-chart {
+  align-content: stretch;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.funded-gain-line-chart {
+  background: var(--surface-muted);
+  border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  border-radius: 8px;
+  display: block;
+  height: 120px;
+  min-width: 0;
+  width: 100%;
+}
+
+.funded-gain-zero {
+  stroke: color-mix(in srgb, var(--muted) 42%, transparent);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+
+.funded-gain-line {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.funded-gain-dot {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.funded-gain-dot.positive {
+  fill: var(--positive);
+}
+
+.funded-gain-dot.negative {
+  fill: var(--negative);
+}
+
+.funded-payout-dot {
+  fill: var(--positive);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.funded-gain-chart-foot {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  font-size: 0.72rem;
+  font-weight: 800;
+  gap: 8px;
+  grid-template-columns: 1fr auto 1fr;
+  min-width: 0;
+}
+
+.funded-gain-chart-foot span,
+.funded-gain-chart-foot strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funded-gain-chart-foot strong {
+  color: var(--text);
+  text-align: center;
+}
+
+.funded-gain-chart-foot span:last-child {
+  text-align: right;
 }
 
 .global-summary-grid {
@@ -547,25 +749,25 @@ h2 {
 }
 
 .global-summary-head h2 {
-  font-size: 0.86rem;
+  font-size: 0.94rem;
   margin: 0;
 }
 
 .global-summary-head strong {
-  font-size: 1.08rem;
+  font-size: 1.18rem;
   line-height: 1;
 }
 
 .global-summary-foot {
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   padding-top: 7px;
 }
 
 .global-summary-foot strong {
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 0.88rem;
 }
 
 .global-summary-table {
@@ -593,14 +795,14 @@ h2 {
 
 .global-summary-row.header {
   color: var(--muted);
-  font-size: 0.56rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .global-summary-row:not(.header) {
   border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-  font-size: 0.66rem;
+  font-size: 0.74rem;
   min-height: 18px;
   padding-top: 2px;
 }
@@ -614,13 +816,13 @@ h2 {
 }
 
 .global-summary-row strong {
-  font-size: 0.66rem;
+  font-size: 0.74rem;
   text-align: right;
 }
 
 .global-summary-empty {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   margin: 0;
 }
 
@@ -656,7 +858,7 @@ h2 {
 
 .global-chart-scale {
   display: grid;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
   height: 220px;
   line-height: 1;
@@ -717,7 +919,7 @@ h2 {
 
 .global-bar-month > strong {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 700;
   text-align: center;
   text-transform: capitalize;
@@ -745,7 +947,7 @@ h2 {
 
 .global-bar-value {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   line-height: 1.1;
   min-height: 18px;
   text-align: center;
@@ -804,7 +1006,7 @@ h2 {
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   gap: 14px;
 }
 
@@ -837,13 +1039,13 @@ h2 {
 }
 
 .global-pie-head h3 {
-  font-size: 0.92rem;
+  font-size: 1rem;
   margin: 0;
 }
 
 .global-pie-head span {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 800;
 }
 
@@ -877,7 +1079,7 @@ h2 {
 }
 
 .global-pie-row strong {
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -886,7 +1088,7 @@ h2 {
 
 .global-pie-row span {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 800;
 }
 
@@ -894,7 +1096,7 @@ h2 {
   align-items: center;
   color: var(--muted);
   display: inline-flex;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   gap: 5px;
   white-space: nowrap;
 }
@@ -1285,6 +1487,70 @@ tr:last-child td {
   border-bottom: 0;
 }
 
+.sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.user-manager-table {
+  min-width: 900px;
+}
+
+.user-manager-table th,
+.user-manager-table td {
+  line-height: 1.15;
+  padding: 4px 10px;
+}
+
+.user-manager-table .current-role-column {
+  width: 125px;
+}
+
+.user-manager-table .role-selection-column {
+  width: 180px;
+}
+
+.user-manager-table th:nth-child(5),
+.user-manager-table td.current-role-cell {
+  border-left: 1px solid var(--border);
+}
+
+.user-manager-table th:nth-child(6),
+.user-manager-table td.role-selection-cell {
+  background: color-mix(in srgb, var(--surface-muted) 48%, transparent);
+  border-left: 2px solid var(--border);
+}
+
+.user-manager-table th:nth-child(7),
+.user-manager-table td:nth-child(7) {
+  border-left: 1px solid var(--border);
+  width: 72px;
+}
+
+.role-pill {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.role-select-field select {
+  font-size: 0.8rem;
+  min-height: 28px;
+  padding: 3px 8px;
+  width: 150px;
+}
+
 .status,
 .day-result {
   border-radius: 999px;
@@ -1447,6 +1713,26 @@ tr:last-child td {
 
 .account-info-row.payout-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-info-panel .detail-field {
+  gap: 5px;
+  min-height: 58px;
+  padding: 9px 10px;
+}
+
+.account-info-panel .detail-field span {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.account-info-panel .detail-field strong {
+  font-size: 0.88rem;
+  line-height: 1.12;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .payout-field {
@@ -1642,6 +1928,13 @@ tr:last-child td {
   gap: 18px;
   grid-template-columns: minmax(0, 1fr);
   padding: 18px;
+  width: 100%;
+}
+
+.account-trade-action-row {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
   width: 100%;
 }
 
@@ -2192,19 +2485,6 @@ tr:last-child td {
   display: grid;
   gap: 0;
   padding: 4px 10px 6px 46px;
-}
-
-.propfirm-rule-group {
-  display: grid;
-  gap: 0;
-}
-
-.propfirm-rule-group-title {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .propfirm-rule-group-list {
@@ -2891,6 +3171,7 @@ select option {
   .compact-metrics,
   .detail-grid,
   .global-dashboard-grid,
+  .global-management-grid,
   .global-summary-grid,
   .kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2935,6 +3216,7 @@ select option {
   .compact-metrics,
   .detail-grid,
   .global-dashboard-grid,
+  .global-management-grid,
   .global-summary-grid,
   .kpi-row,
   .form-grid {
@@ -2978,6 +3260,14 @@ select option {
 
   .account-performance-layout {
     padding: 12px;
+  }
+
+  .account-trade-action-row {
+    justify-content: stretch;
+  }
+
+  .account-trade-action-row .button {
+    width: 100%;
   }
 
   .account-performance-chart,

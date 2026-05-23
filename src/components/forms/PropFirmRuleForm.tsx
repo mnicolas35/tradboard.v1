@@ -19,6 +19,7 @@ type PropFirmRuleFormProps = {
   propFirmLabel?: string | null;
   compact?: boolean;
   allowStandardToggle?: boolean;
+  defaultStandardRule?: boolean;
   onCancel?: () => void;
   onSuccess?: () => void;
 };
@@ -35,6 +36,7 @@ export function PropFirmRuleForm({
   propFirmLabel,
   compact = false,
   allowStandardToggle = false,
+  defaultStandardRule = false,
   onCancel,
   onSuccess
 }: PropFirmRuleFormProps) {
@@ -112,7 +114,7 @@ export function PropFirmRuleForm({
       <div className="form-grid">
         {allowStandardToggle ? (
           <label className="check-field">
-            <input defaultChecked={initialRule?.isStandard ?? false} name="isStandard" type="checkbox" />
+            <input defaultChecked={initialRule?.isStandard ?? defaultStandardRule} name="isStandard" type="checkbox" />
             <span>Règle standard visible par tous</span>
           </label>
         ) : null}

@@ -24,7 +24,6 @@ const accountTypeOptions = [
 const statusOptions = [
   { id: "ACTIVE", label: "ACTIVE" },
   { id: "PASSED", label: "PASSED" },
-  { id: "FAILED", label: "FAILED" },
   { id: "CLOSED", label: "CLOSED" }
 ];
 

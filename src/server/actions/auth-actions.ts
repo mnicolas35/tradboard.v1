@@ -85,7 +85,9 @@ export async function logoutUser() {
   redirect("/");
 }
 
-export async function updateUserAdminRole(formData: FormData) {
+const editableRoles = new Set(["USER", "ADMIN", "CONTRIBUTOR"]);
+
+export async function updateUserRole(formData: FormData) {
   const currentUser = await getCurrentUser();
 
   if (currentUser.role !== "ADMIN") {
@@ -98,13 +100,18 @@ export async function updateUserAdminRole(formData: FormData) {
   }
 
   if (userId === currentUser.id) {
-    throw new Error("Vous ne pouvez pas modifier votre propre role admin.");
+    throw new Error("Vous ne pouvez pas modifier votre propre role.");
+  }
+
+  const role = text(formData, "role");
+  if (!editableRoles.has(role)) {
+    throw new Error("Role invalide.");
   }
 
   await prisma.user.update({
     where: { id: userId },
     data: {
-      role: formData.get("isAdmin") === "on" ? "ADMIN" : "USER"
+      role: role as "USER" | "ADMIN" | "CONTRIBUTOR"
     }
   });
 
