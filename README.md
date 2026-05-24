@@ -148,7 +148,7 @@ Les utilisateurs peuvent se connecter par email/mot de passe ou via Google OAuth
 - `User` conserve `role` avec `ADMIN`, `CONTRIBUTOR` et `USER`.
 - Comptes, resultats journaliers, depenses, payouts et taux de change portent un `userId`.
 - Un utilisateur standard doit rester filtre sur ses donnees.
-- Le contributeur peut creer des regles prop firm visibles par tous sans acceder a la gestion utilisateurs.
+- Le contributeur peut creer, modifier et supprimer des regles prop firm visibles par tous sans acceder a la gestion utilisateurs.
 - L'admin peut charger une vue globale cote lecture; les actions restent centrees sur l'utilisateur courant.
 
 ## Regles et payouts

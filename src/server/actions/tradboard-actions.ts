@@ -245,6 +245,14 @@ function canCreateSharedPropFirmRules(role: string) {
   return role === "ADMIN" || role === "CONTRIBUTOR";
 }
 
+function canEditSharedPropFirmRules(role: string) {
+  return role === "ADMIN" || role === "CONTRIBUTOR";
+}
+
+function canDeleteSharedPropFirmRules(role: string) {
+  return role === "ADMIN" || role === "CONTRIBUTOR";
+}
+
 async function assertOwnAccount(accountId: string, userId: string) {
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId },
@@ -340,7 +348,7 @@ export async function createPropFirmRule(formData: FormData) {
   refresh();
 }
 
-async function assertCanManagePropFirmRule(ruleId: string) {
+async function getEditablePropFirmRule(ruleId: string) {
   const currentUser = await getCurrentUser();
   const rule = await prisma.propFirmRule.findUnique({
     where: { id: ruleId },
@@ -356,29 +364,53 @@ async function assertCanManagePropFirmRule(ruleId: string) {
     throw new Error("Regle introuvable.");
   }
 
-  const canManage = currentUser.role === "ADMIN" || rule.createdByUserId === currentUser.id;
-  if (!canManage) {
+  const canEdit = canEditSharedPropFirmRules(currentUser.role) || rule.createdByUserId === currentUser.id;
+  if (!canEdit) {
     throw new Error("Vous ne pouvez modifier que vos regles.");
   }
 
   return { currentUser, rule };
 }
 
+async function assertCanDeletePropFirmRule(ruleId: string) {
+  const currentUser = await getCurrentUser();
+  const rule = await prisma.propFirmRule.findUnique({
+    where: { id: ruleId },
+    select: {
+      id: true,
+      createdByUserId: true
+    }
+  });
+
+  if (!rule) {
+    throw new Error("Regle introuvable.");
+  }
+
+  const canDelete = canDeleteSharedPropFirmRules(currentUser.role) || rule.createdByUserId === currentUser.id;
+  if (!canDelete) {
+    throw new Error("Vous ne pouvez supprimer que vos regles.");
+  }
+}
+
 export async function updatePropFirmRule(formData: FormData) {
   const id = requiredText(formData, "id");
-  const { currentUser, rule } = await assertCanManagePropFirmRule(id);
+  const { currentUser, rule } = await getEditablePropFirmRule(id);
   const requestedStandard = formData.get("isStandard") === "on";
   const isStandard = canCreateSharedPropFirmRules(currentUser.role) ? requestedStandard : false;
   const propFirmId = optionalText(formData, "propFirmId") ?? rule.propFirmId;
+  const ownerData =
+    currentUser.role === "ADMIN" && isStandard
+      ? { createdByUser: { disconnect: true } }
+      : rule.createdByUserId || !isStandard
+        ? { createdByUser: { connect: { id: rule.createdByUserId ?? currentUser.id } } }
+        : {};
 
   await prisma.$transaction([
     prisma.propFirmRule.update({
       where: { id },
       data: {
         propFirm: { connect: { id: propFirmId } },
-        createdByUser: currentUser.role === "ADMIN" && isStandard
-          ? { disconnect: true }
-          : { connect: { id: rule.createdByUserId ?? currentUser.id } },
+        ...ownerData,
         name: requiredText(formData, "name"),
         accountType: requiredText(formData, "accountType") as AccountType,
         accountSize: requiredDecimal(formData, "accountSize"),
@@ -422,7 +454,7 @@ export async function updatePropFirmRule(formData: FormData) {
 
 export async function deletePropFirmRule(formData: FormData) {
   const id = requiredText(formData, "id");
-  await assertCanManagePropFirmRule(id);
+  await assertCanDeletePropFirmRule(id);
   await prisma.propFirmRule.delete({ where: { id } });
   refresh();
 }

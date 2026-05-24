@@ -13,11 +13,11 @@ type PropFirmManagerProps = {
   propFirms: AppData["propFirmDetails"];
   propFirmRules: AppData["propFirmRules"];
   isAdmin: boolean;
-  canCreateSharedRules: boolean;
+  canManageSharedRules: boolean;
   currentUserId: string;
 };
 
-export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSharedRules, currentUserId }: PropFirmManagerProps) {
+export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canManageSharedRules, currentUserId }: PropFirmManagerProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"firm" | null>(null);
@@ -35,8 +35,12 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSh
   const duplicatingRule = duplicatingRuleId ? rulesById.get(duplicatingRuleId) ?? null : null;
   const deletingRule = deletingRuleId ? rulesById.get(deletingRuleId) ?? null : null;
 
-  function canManageRule(rule: { isStandard: boolean; createdByUserId: string | null }) {
-    return isAdmin || rule.createdByUserId === currentUserId;
+  function canEditRule(rule: { createdByUserId: string | null }) {
+    return canManageSharedRules || rule.createdByUserId === currentUserId;
+  }
+
+  function canDeleteRule(rule: { createdByUserId: string | null }) {
+    return canManageSharedRules || rule.createdByUserId === currentUserId;
   }
 
   return (
@@ -198,26 +202,30 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSh
                             >
                               ⧉
                             </button>
-                            {canManageRule(rule) ? (
+                            {canEditRule(rule) || canDeleteRule(rule) ? (
                               <>
-                                <button
-                                  aria-label="Modifier la règle"
-                                  className="row-icon-button edit"
-                                  title="Modifier la règle"
-                                  type="button"
-                                  onClick={() => setEditingRuleId(rule.id)}
-                                >
-                                  ⚙️
-                                </button>
-                                <button
-                                  aria-label="Supprimer la règle"
-                                  className="row-icon-button danger"
-                                  title="Supprimer la règle"
-                                  type="button"
-                                  onClick={() => setDeletingRuleId(rule.id)}
-                                >
-                                  🗑️
-                                </button>
+                                {canEditRule(rule) ? (
+                                  <button
+                                    aria-label="Modifier la règle"
+                                    className="row-icon-button edit"
+                                    title="Modifier la règle"
+                                    type="button"
+                                    onClick={() => setEditingRuleId(rule.id)}
+                                  >
+                                    ⚙️
+                                  </button>
+                                ) : null}
+                                {canDeleteRule(rule) ? (
+                                  <button
+                                    aria-label="Supprimer la règle"
+                                    className="row-icon-button danger"
+                                    title="Supprimer la règle"
+                                    type="button"
+                                    onClick={() => setDeletingRuleId(rule.id)}
+                                  >
+                                    🗑️
+                                  </button>
+                                ) : null}
                               </>
                             ) : (
                               <span className="muted rule-locked">Lecture seule</span>
@@ -240,8 +248,8 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSh
         isOpen={Boolean(quickRuleFirm)}
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         propFirm={quickRuleFirm}
-        allowStandardToggle={canCreateSharedRules}
-        defaultStandardRule={canCreateSharedRules}
+        allowStandardToggle={canManageSharedRules}
+        defaultStandardRule={canManageSharedRules}
         onClose={() => setQuickRuleFirm(null)}
       />
       <AddPropFirmRuleModal
@@ -249,7 +257,7 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSh
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={editingRule}
         mode="edit"
-        allowStandardToggle={canCreateSharedRules}
+        allowStandardToggle={canManageSharedRules}
         onClose={() => setEditingRuleId(null)}
       />
       <AddPropFirmRuleModal
@@ -257,8 +265,8 @@ export function PropFirmManager({ propFirms, propFirmRules, isAdmin, canCreateSh
         propFirms={propFirms.map((firm) => ({ id: firm.id, label: `${firm.acronym} - ${firm.name}` }))}
         initialRule={duplicatingRule}
         mode="create"
-        allowStandardToggle={canCreateSharedRules}
-        defaultStandardRule={canCreateSharedRules}
+        allowStandardToggle={canManageSharedRules}
+        defaultStandardRule={canManageSharedRules}
         onClose={() => setDuplicatingRuleId(null)}
       />
       <Modal isOpen={Boolean(deletingRule)} title="Supprimer cette règle ?" onClose={() => setDeletingRuleId(null)}>
